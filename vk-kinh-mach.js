@@ -1,7 +1,5 @@
-// Trợ lý Kinh mạch — Vạn Kiếp Tu Tiên (bản tách riêng chỉ có phần kinh mạch).
-// Tách từ vk-tro-ly.js v2.0.1. Chỉ tính toán, không tự bấm, không gửi dữ liệu ra ngoài.
-// Chạy trong trang game: tải lại code game thành bản sao để dùng hàm tính của chính game.
-const TOOL_VER = '2.0.2-km-fix';
+// Trợ lý Kinh mạch — Bản chẩn đoán dữ liệu
+const TOOL_VER = '2.0.3-debug';
 
 (() => {
   if (window.__vkKM) { window.__vkKM.show(); return; }
@@ -43,7 +41,6 @@ const TOOL_VER = '2.0.2-km-fix';
     let src = await (await fetch(url)).text();
     const names = {}, missing = [];
     for (const [k, [a, label]] of Object.entries(ANCHORS)) { const n = findFn(src, a); if (n) names[k] = n; else missing.push(label); }
-    // Bản mới của game: hàm tính kinh mạch tách thành hàm trong (t,n,e) + hàm bọc có cache (t,n)
     if (names.Rt && new RegExp('function ' + names.Rt.replace(/\$/g, '\\$') + '\\(t,n,e\\)').test(src)) {
       const m = new RegExp('function ([\\w$]+)\\(t,n\\)\\{(?:(?!function ).){0,900}?=' + names.Rt.replace(/\$/g, '\\$') + '\\(t,n,\\w\\)', 's').exec(src);
       if (m) names.Rt = m[1]; else missing.push('tính kinh mạch (bọc)');
@@ -53,15 +50,12 @@ const TOOL_VER = '2.0.2-km-fix';
       if (m) names.xo = m[1]; else missing.push('lưới kinh mạch');
     }
     if (missing.length) throw new Error('Game vừa cập nhật nên tool chưa nhận ra: ' + missing.join(', ') + '. Hãy chụp màn hình gửi Claude để sửa tool.');
-    // Đường dẫn tương đối → tuyệt đối (vì bản sao chạy từ blob:)
     src = src.replace(/from"\.\//g, 'from"' + base).replace(/import\("\.\//g, 'import("' + base);
-    // Bản sao chạy từ blob: nên import.meta.url phải trỏ về file gốc của game
     src = src.replace(/import\.meta\.url/g, JSON.stringify(url));
-    // Không cho bản sao khởi động lại giao diện game
     let ok1 = false, ok2 = false;
     src = src.replace(/((?:[\w$]+\(\);)*)const ([\w$]+)=[\w$]+\.createRoot\(document\.getElementById\("hud"\)\)/, (_, __, v) => { ok1 = true; return `const ${v}={render(){}}`; });
     src = src.replace(/(__tuTienReady:!0\}\)\})([\w$]+)\(\)\.catch\(/, (_, a) => { ok2 = true; return a + 'Promise.resolve().catch('; });
-    if (!ok1 || !ok2) throw new Error('Game vừa đổi cách khởi động nên tool chưa chạy được. Hãy chụp màn hình này gửi Claude để sửa tool.');
+    if (!ok1 || !ok2) throw new Error('Game vừa đổi cách khởi động nên tool chưa chạy được.');
     src = src.replace(/window\.addEventListener\("contextmenu",/, 'void("contextmenu",');
     src += `\n;export const __VKT={${Object.entries(names).map(([k, v]) => k + ':' + v).join(',')}};`;
     progress('Đang dựng bộ tính toán…');
@@ -75,7 +69,6 @@ const TOOL_VER = '2.0.2-km-fix';
 
   const G = () => window.game;
   const C = () => G().env.content;
-  // Clone an toàn: không dùng structuredClone vì sẽ làm mất các hàm (method) trong object của game
   const clone = (obj) => {
     if (obj === null || typeof obj !== 'object') return obj;
     if (Array.isArray(obj)) return obj.map(clone);
@@ -95,7 +88,6 @@ const TOOL_VER = '2.0.2-km-fix';
   const heTen = (h) => HE[h] ?? h;
   const nvNow = () => clone(G().state.run.nhanVat);
 
-  // ───────────────────────── 3. Mô phỏng trận ─────────────────────────
   const BENCH_IDS = ['enemy.de_tu_truc_co', 'enemy.doc_hanh_kiem_khach', 'enemy.ma_tu_hut_mau', 'enemy.cuong_thi', 'enemy.am_tuong', 'enemy.lao_hoe_tinh', 'enemy.hoa_tinh', 'enemy.thuy_linh', 'enemy.mao_cuong'];
   function benchEnemies(cg, tcP = 0) {
     const K = S.core, c = C();
@@ -106,14 +98,12 @@ const TOOL_VER = '2.0.2-km-fix';
   }
   function fight(P, E) {
     try { 
-      return S.core.eJ(P, E, {}); // P và E đã được clone từ trước, không clone lại ở đây
+      return S.core.eJ(P, E, {}); 
     } catch (e) { 
-      console.error("Lỗi mô phỏng trận đánh (eJ):", e);
-      return { thang: false, nHiep: 30, khiHuyetThapNhat: 0, stTa: 0 }; 
+      return { thang: false, nHiep: 30, khiHuyetThapNhat: 0, stTa: 0, _err: e.message }; 
     }
   }
 
-  // ───────────────────────── 4. Tối ưu kinh mạch ─────────────────────────
   function makeEval(nv0, enemies, mode) {
     const K = S.core, c = C(), cache = new Map();
     return (manh) => {
@@ -121,9 +111,10 @@ const TOOL_VER = '2.0.2-km-fix';
       if (cache.has(key)) return cache.get(key);
       const nv = clone(nv0); nv.kinhMach.manh = manh.map((p) => ({ ...p }));
       const R = K.Rt(nv, c), P = K.Vr(nv, c);
-      let fightScore = 0, wins = 0;
+      let fightScore = 0, wins = 0, errCount = 0, lastErr = '';
       for (const { E } of enemies) {
         const r = fight(P, E);
+        if (r._err) { errCount++; lastErr = r._err; }
         const hpLeft = r.khiHuyetThapNhat / P.khiHuyetToiDa;
         const dealt = Math.min(1, (r.stTa || 0) * Math.max(1, r.nHiep) / E.khiHuyetToiDa);
         if (r.thang) { wins++; fightScore += mode === 'danh' ? 100 + 15 * hpLeft + 60 / Math.max(1, r.nHiep) : 100 + 50 * hpLeft + 25 / Math.max(1, r.nHiep); }
@@ -135,7 +126,7 @@ const TOOL_VER = '2.0.2-km-fix';
       if (mode === 'tu') s = 0.3 * fightScore + 400 * toc + 300 * dp + 0.5 * R.linhLuc + thong;
       else if (mode === 'danh') s = fightScore + 0.5 * R.linhLuc + 0.2 * thong;
       else s = fightScore + 30 * toc + 20 * dp + 0.2 * thong + 0.5 * R.linhLuc;
-      const out = { s, wins, P, R };
+      const out = { s, wins, P, R, errCount, lastErr };
       cache.set(key, out);
       return out;
     };
@@ -184,10 +175,9 @@ const TOOL_VER = '2.0.2-km-fix';
       if (e.s >= curS || rnd() < Math.exp((e.s - curS) / T)) { cur = next; curS = e.s; if (e.s > bestS) { best = next; bestS = e.s; } }
     }
     const e = ev(best);
-    return { manh: best.map((p) => ({ ...p.m })), score: e.s, wins: e.wins, n: enemies.length, P: e.P, R: e.R };
+    return { manh: best.map((p) => ({ ...p.m })), score: e.s, wins: e.wins, n: enemies.length, P: e.P, R: e.R, errCount: e.errCount, lastErr: e.lastErr };
   }
 
-  // SỬA: Tự động dò tìm mảng món đồ dù game đổi tên biến
   function getCurrentManh(nv) {
     const km = nv.kinhMach || {};
     const arr = km.manh || km.o || km.m || km.items || km.dat || km.list || [];
@@ -201,10 +191,19 @@ const TOOL_VER = '2.0.2-km-fix';
     const ev = makeEval({ ...clone(nv), kinhMach: { ...clone(nv.kinhMach), manh: [] } }, enemies, mode);
     const manh = getCurrentManh(nv);
     const e = ev(manh);
-    return { manh: clone(manh), score: e.s, wins: e.wins, n: enemies.length, P: e.P, R: e.R };
+    return { manh: clone(manh), score: e.s, wins: e.wins, n: enemies.length, P: e.P, R: e.R, errCount: e.errCount, lastErr: e.lastErr };
   }
 
-  // ───────────────────────── 5. Vẽ kinh mạch ─────────────────────────
+  // Hàm lấy mẫu cấu trúc dữ liệu để debug
+  function getDebugInfo(nv) {
+    const km = nv.kinhMach || {};
+    const keys = Object.keys(km).join(', ');
+    const manh = getCurrentManh(nv);
+    return `Các key trong kinhMach: <b>${keys}</b><br>
+            Số món tìm thấy: <b>${manh.length}</b><br>
+            Mẫu món đầu tiên: <code style="font-size:11px;word-break:break-all">${manh.length ? JSON.stringify(manh[0]) : 'Không có'}</code>`;
+  }
+
   const BASE = { thuy: ['#3f6fb5', '#5a8fd6', '#2c5592', '#6f9fd0'], bang: ['#5fb8c9', '#86cfdc', '#3e9db0'], vo_sac: ['#7d7a76', '#9a958e', '#5f5c58'], hoa: ['#c0392b', '#d9622b', '#a8321f'], tho: ['#8a6a2e', '#a07a3a', '#6e5524'], kim: ['#c9a227', '#8f7a2a', '#e0b84a', '#a8892c', '#d4a017'], moc: ['#3f8f4a', '#5aa865', '#2f6f38'], loi: ['#7a4fb5', '#9a6fd0'], phong: ['#3fa08f', '#5cbfae'] };
   const TINT = { thuy: '#cfdcef', bang: '#d3ecf0', vo_sac: '#dcd6cc', hoa: '#efc2b4', kim: '#f1e3b0', tho: '#e3d2b0', moc: '#cfe6c8', loi: '#ddd0ef', phong: '#cdebe5' };
 
@@ -223,7 +222,6 @@ const TOOL_VER = '2.0.2-km-fix';
       const rm = R.manh[n];
       pieces.push({ it, cells, thong: rm ? rm.thong : false, heSo: rm ? rm.heSo : 0, onHuyet: cells.some((x) => hy.has(x)) });
     });
-    // chỉ vẽ vùng có ô mở
     let x0 = 99, y0 = 99, x1 = -1, y1 = -1;
     for (let i = 0; i < g.rong * g.cao; i++) if (km.trangThai[i] !== 'an' || own[i] !== undefined) { const x = i % g.rong, y = Math.floor(i / g.rong); x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
     x0 = Math.max(0, x0 - 1); y0 = Math.max(0, y0 - 1); x1 = Math.min(g.rong - 1, x1 + 1); y1 = Math.min(g.cao - 1, y1 + 1);
@@ -261,7 +259,6 @@ const TOOL_VER = '2.0.2-km-fix';
     return `<img class="vk-img" src="${cv.toDataURL('image/png')}" alt="kinh mạch"><div class="vk-note">Chấm vàng = huyệt · 丹 = đan điền · × = ô tắc. Giữ tay lên ảnh để lưu.</div>${legend}`;
   }
 
-  // ── Giao diện
   const css = `
   #vk-root{position:fixed;inset:0;z-index:2147483000;background:#f3ece0;color:#1e1512;font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column}
   #vk-root *{box-sizing:border-box}
@@ -336,7 +333,14 @@ const TOOL_VER = '2.0.2-km-fix';
     const nv = nvNow();
     const tac = nv.kinhMach.trangThai.map((s, i) => (s === 'tac' ? i : -1)).filter((i) => i >= 0);
     const mo = (nv.kinhMach.cho && nv.kinhMach.cho.mo) || 0;
+    
+    // Bảng chẩn đoán
+    const debugHtml = `<div style="background:#fff3cd;border:1px solid #ffe69c;padding:10px;border-radius:8px;margin-bottom:10px;font-size:13px">
+      <b>Thông tin chẩn đoán:</b><br>${getDebugInfo(nv)}
+    </div>`;
+
     body.innerHTML = `
+    ${debugHtml}
     <div class="vk-card"><h3>Xếp kinh mạch tối ưu</h3>
       <div class="vk-mu" style="font-size:13px">Tool thử hàng nghìn cách xếp các món trong túi, đánh thử 9 trận mẫu cùng cảnh giới cho mỗi cách và giữ cách tốt nhất.</div>
       <div style="margin:8px 0"><select class="vk-sel" id="vk-mode"><option value="bal">Cân bằng (đánh + tu luyện)</option><option value="danh">Ưu tiên đánh nhau</option><option value="tu">Ưu tiên tu luyện / đột phá</option></select>
@@ -401,7 +405,17 @@ const TOOL_VER = '2.0.2-km-fix';
   function showBest(nv) {
     const { cur, best } = S.best; const out = body.querySelector('#vk-out');
     if (!out) return;
-    out.innerHTML = (best.same ? '<div class="vk-ok" style="margin:6px 0">Cách đang xếp đã tốt nhất tool tìm được.</div>' : '<div class="vk-ok" style="margin:6px 0">Xếp lại trong game theo ảnh dưới:</div>' + drawGrid(nv, best.manh)) + statRows(cur, best) +
+    
+    let errHtml = '';
+    if (cur.errCount > 0 || best.errCount > 0) {
+      errHtml = `<div class="vk-err" style="margin-bottom:10px">
+        <b>Phát hiện lỗi mô phỏng trận đánh!</b><br>
+        - Lúc tính "Đang xếp": lỗi ${cur.errCount}/${cur.n} trận. (Lỗi: ${cur.lastErr})<br>
+        - Lúc tính "Bản mới": lỗi ${best.errCount}/${best.n} trận. (Lỗi: ${best.lastErr})
+      </div>`;
+    }
+
+    out.innerHTML = errHtml + (best.same ? '<div class="vk-ok" style="margin:6px 0">Cách đang xếp đã tốt nhất tool tìm được.</div>' : '<div class="vk-ok" style="margin:6px 0">Xếp lại trong game theo ảnh dưới:</div>' + drawGrid(nv, best.manh)) + statRows(cur, best) +
       '<div class="vk-mu" style="font-size:12px;margin-top:6px">Trận mẫu: 9 loại quái cùng cảnh giới với bạn, ở tiểu cảnh giới quanh mức của bạn (thấp hơn 1, bằng, cao hơn 1).</div>';
   }
 
