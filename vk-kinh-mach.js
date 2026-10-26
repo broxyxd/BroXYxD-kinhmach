@@ -408,8 +408,12 @@ const TOOL_VER = '2.2.0-km';
       const budget = capSel === 0 ? money : capSel;
       const out = body.querySelector('#vk-bo'), prog = bindProgress(body.querySelector('#vk-pr5'));
       try {
-        const cands = [...c.items.values()].filter((it) => (it.loai === 'cong_phap' || it.loai === 'phap_khi') && it.hinh && (it.canh_gioi ?? 0) <= nv.canhGioi && !(nv.tuiDo[it.id] > 0) && (budget < 0 || (it.gia || 0) <= budget))
-          .sort((a, b) => (b.pham_cap || 0) - (a.pham_cap || 0) || (a.gia || 0) - (b.gia || 0)).slice(0, nTop);
+        const loai = body.querySelector('#vk-bl').value;
+        const pool = [...c.items.values()].filter((it) => (it.loai === 'cong_phap' || it.loai === 'phap_khi') && (loai === 'all' || it.loai === loai) && it.hinh && (it.canh_gioi ?? 0) <= nv.canhGioi && !(nv.tuiDo[it.id] > 0) && (budget < 0 || (it.gia || 0) <= budget))
+          .sort((a, b) => (b.pham_cap || 0) - (a.pham_cap || 0) || (a.gia || 0) - (b.gia || 0));
+        // chọn xen kẽ công pháp và pháp khí để không bên nào lấn hết chỗ
+        const cp = pool.filter((it) => it.loai === 'cong_phap'), pk = pool.filter((it) => it.loai === 'phap_khi'), cands = [];
+        for (let i = 0; cands.length < nTop && (i < cp.length || i < pk.length); i++) { if (i < cp.length) cands.push(cp[i]); if (cands.length < nTop && i < pk.length) cands.push(pk[i]); }
         if (!cands.length) { out.innerHTML = '<div class="vk-mu" style="margin:6px 0">Không có món nào trong tầm giá và cảnh giới này.</div>'; prog(1, ''); ev.target.disabled = false; return; }
         const nv0 = clone(nv); nv0.kinhMach.manh = [];
         const base = await anneal({ nv0, mode, iters: 1200, init: nv.kinhMach.manh, onProg: (f) => prog(f / (cands.length + 1), 'Mốc hiện tại…') });
@@ -425,7 +429,7 @@ const TOOL_VER = '2.2.0-km';
         const good = res.filter((x) => x.gain > 1).slice(0, 15);
         out.innerHTML = good.length
           ? `<div class="vk-mu" style="font-size:13px;margin:6px 0">Đã thử ${res.length} món. Mốc hiện tại: thắng ${base.wins}/${base.n} trận mẫu. "Lợi" = mức tăng điểm so với cách xếp tốt nhất hiện có (đã tính xếp lại kinh mạch). Giá là giá gốc, tiệm có thể bán khác.</div><table class="vk-t"><tr><th>Món</th><th>Giá gốc</th><th>Lợi</th></tr>` +
-            good.map((x, i) => `<tr><td><b>${esc(x.it.ten)}</b><br><span class="vk-mu" style="font-size:12px">${esc((x.it.he || ['vo_sac']).map(heTen).join('/'))} · phẩm ${x.it.pham_cap} · ${itemDesc(x.it)}</span><br><button class="vk-btn sec" data-bi="${i}" style="padding:3px 8px;font-size:13px">Xem cách xếp</button></td><td>${x.it.gia ?? '?'}</td><td class="vk-ok">+${Math.round(x.gain)}<br><span class="vk-mu" style="font-size:12px">thắng ${x.r.wins}/${x.r.n}</span></td></tr>`).join('') + '</table><div id="vk-bv"></div>'
+            good.map((x, i) => `<tr><td><b>${esc(x.it.ten)}</b><br><span class="vk-mu" style="font-size:12px">${x.it.loai === 'cong_phap' ? 'Công pháp' : 'Pháp khí'} · ${esc((x.it.he || ['vo_sac']).map(heTen).join('/'))} · phẩm ${x.it.pham_cap} · ${itemDesc(x.it)}</span><br><button class="vk-btn sec" data-bi="${i}" style="padding:3px 8px;font-size:13px">Xem cách xếp</button></td><td>${x.it.gia ?? '?'}</td><td class="vk-ok">+${Math.round(x.gain)}<br><span class="vk-mu" style="font-size:12px">thắng ${x.r.wins}/${x.r.n}</span></td></tr>`).join('') + '</table><div id="vk-bv"></div>'
           : '<div class="vk-mu" style="margin:6px 0">Không món nào trong tầm giá giúp rõ rệt so với đồ bạn đang có. Thử nâng mức giá hoặc đo thêm nhiều món.</div>';
         out.querySelectorAll('[data-bi]').forEach((b) => { b.onclick = () => {
           const x = good[+b.dataset.bi], r = stripDead(x.nvX, x.r, mode);
@@ -471,6 +475,7 @@ const TOOL_VER = '2.2.0-km';
     <div class="vk-card"><h3>Nên mua / tìm món nào?</h3>
       <div class="vk-mu" style="font-size:13px">Có <b>${Math.floor(nv.linhThach || 0)}</b> linh thạch. Tool thử thêm từng công pháp / pháp khí chưa có vào túi, xếp lại kinh mạch hiện tại và đánh trận mẫu để đo món nào lợi nhất. Dùng chế độ ở khối "Xếp kinh mạch tối ưu".</div>
       <div style="margin:8px 0"><select class="vk-sel" id="vk-bp"><option value="0" selected>Giá ≤ linh thạch đang có</option><option value="300">Giá ≤ 300</option><option value="1000">Giá ≤ 1.000</option><option value="3000">Giá ≤ 3.000</option><option value="-1">Mọi giá</option></select>
+      <select class="vk-sel" id="vk-bl"><option value="all" selected>Công pháp + pháp khí</option><option value="cong_phap">Chỉ công pháp</option><option value="phap_khi">Chỉ pháp khí</option></select>
       <select class="vk-sel" id="vk-bn"><option value="20">Đo 20 món (nhanh)</option><option value="40" selected>Đo 40 món</option><option value="80">Đo 80 món (lâu)</option></select></div>
       <button class="vk-btn" id="vk-by">Tìm món nên mua</button>${progressHtml('vk-pr5')}<div id="vk-bo"></div></div>
     <div class="vk-card"><h3>Đang xếp trong game</h3><div id="vk-cur"></div></div>
