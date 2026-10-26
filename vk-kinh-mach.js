@@ -1,5 +1,7 @@
-// Trợ lý Kinh mạch — Bản chẩn đoán dữ liệu
-const TOOL_VER = '2.0.3-debug';
+// Trợ lý Kinh mạch — Vạn Kiếp Tu Tiên (bản tách riêng chỉ có phần kinh mạch).
+// Tách từ vk-tro-ly.js v2.2.0. Chỉ tính toán, không tự bấm, không gửi dữ liệu ra ngoài.
+// Chạy trong trang game: tải lại code game thành bản sao để dùng hàm tính của chính game.
+const TOOL_VER = '2.2.0-km';
 
 (() => {
   if (window.__vkKM) { window.__vkKM.show(); return; }
@@ -13,6 +15,12 @@ const TOOL_VER = '2.0.3-debug';
     Tp:  ['.khuon.split(', 'khuôn kinh mạch'],
     al:  [/\(\w\.hinh\?\?\[\],\w\.xoay\)/, 'ô của mảnh'],
     Jh:  ['Món này đã có trên kinh mạch', 'kiểm tra chỗ đặt'],
+  };
+  const REGEX_NAMES = {
+    fn: [/class ([\w$]+)\{constructor\(n\)\{this\.state=n\}static fromSeed/, 'bộ số ngẫu nhiên'],
+  };
+  const REGEX_OPT = {
+    IP: [/function ([\w$]+)\(t,n,e,i=0\)\{return [\w$]+\(t,n,e,i,[\w$]+\(t,n,"sell",i\)\)\}/, 'giá bán'],
   };
 
   function findFn(src, anchor) {
@@ -41,21 +49,32 @@ const TOOL_VER = '2.0.3-debug';
     let src = await (await fetch(url)).text();
     const names = {}, missing = [];
     for (const [k, [a, label]] of Object.entries(ANCHORS)) { const n = findFn(src, a); if (n) names[k] = n; else missing.push(label); }
+    for (const [k, [re, label]] of Object.entries(REGEX_NAMES)) { const m = re.exec(src); if (m) names[k] = m[1]; else missing.push(label); }
+    // Bản mới của game: hàm tính kinh mạch tách thành hàm trong (t,n,e) + hàm bọc có cache (t,n)
     if (names.Rt && new RegExp('function ' + names.Rt.replace(/\$/g, '\\$') + '\\(t,n,e\\)').test(src)) {
       const m = new RegExp('function ([\\w$]+)\\(t,n\\)\\{(?:(?!function ).){0,900}?=' + names.Rt.replace(/\$/g, '\\$') + '\\(t,n,\\w\\)', 's').exec(src);
       if (m) names.Rt = m[1]; else missing.push('tính kinh mạch (bọc)');
+    }
+    // Bản mới của game: kiểm tra món (t,n,e,i) tách khỏi hàm kiểm tra chỗ đặt (t,n,e,i=-1)
+    if (names.Jh && !new RegExp('function ' + names.Jh.replace(/\$/g, '\\$') + '\\(t,n,e,i=-1\\)').test(src)) {
+      const m = new RegExp('function ([\\w$]+)\\(t,n,e,i=-1\\)\\{(?:(?!function ).){0,400}?' + names.Jh.replace(/\$/g, '\\$') + '\\(', 's').exec(src);
+      if (m) names.Jh = m[1]; else missing.push('kiểm tra chỗ đặt (bọc)');
     }
     if (names.Tp) {
       const m = new RegExp(`function ([\\w$]+)\\(t,n\\)\\{return ${names.Tp.replace(/\$/g, '\\$')}\\(([\\w$]+)\\(t,n\\)\\)\\}`).exec(src);
       if (m) names.xo = m[1]; else missing.push('lưới kinh mạch');
     }
+    for (const [k, [re]] of Object.entries(REGEX_OPT)) { const m = re.exec(src); if (m) names[k] = m[1]; }
     if (missing.length) throw new Error('Game vừa cập nhật nên tool chưa nhận ra: ' + missing.join(', ') + '. Hãy chụp màn hình gửi Claude để sửa tool.');
+    // Đường dẫn tương đối → tuyệt đối (vì bản sao chạy từ blob:)
     src = src.replace(/from"\.\//g, 'from"' + base).replace(/import\("\.\//g, 'import("' + base);
+    // Bản sao chạy từ blob: nên import.meta.url phải trỏ về file gốc của game
     src = src.replace(/import\.meta\.url/g, JSON.stringify(url));
+    // Không cho bản sao khởi động lại giao diện game
     let ok1 = false, ok2 = false;
     src = src.replace(/((?:[\w$]+\(\);)*)const ([\w$]+)=[\w$]+\.createRoot\(document\.getElementById\("hud"\)\)/, (_, __, v) => { ok1 = true; return `const ${v}={render(){}}`; });
     src = src.replace(/(__tuTienReady:!0\}\)\})([\w$]+)\(\)\.catch\(/, (_, a) => { ok2 = true; return a + 'Promise.resolve().catch('; });
-    if (!ok1 || !ok2) throw new Error('Game vừa đổi cách khởi động nên tool chưa chạy được.');
+    if (!ok1 || !ok2) throw new Error('Game vừa đổi cách khởi động nên tool chưa chạy được. Hãy chụp màn hình này gửi Claude để sửa tool.');
     src = src.replace(/window\.addEventListener\("contextmenu",/, 'void("contextmenu",');
     src += `\n;export const __VKT={${Object.entries(names).map(([k, v]) => k + ':' + v).join(',')}};`;
     progress('Đang dựng bộ tính toán…');
@@ -69,25 +88,28 @@ const TOOL_VER = '2.0.3-debug';
 
   const G = () => window.game;
   const C = () => G().env.content;
-  const clone = (obj) => {
-    if (obj === null || typeof obj !== 'object') return obj;
-    if (Array.isArray(obj)) return obj.map(clone);
-    if (obj instanceof Set) return new Set([...obj].map(clone));
-    if (obj instanceof Map) return new Map([...obj].map(([k, v]) => [k, clone(v)]));
-    const copy = {};
-    for (const key in obj) {
-      if (Object.prototype.hasOwnProperty.call(obj, key)) copy[key] = clone(obj[key]);
-    }
-    return copy;
-  };
+  const clone = (x) => structuredClone(x);
   const sleep0 = () => new Promise((r) => setTimeout(r, 0));
   const pct = (x, d = 0) => (x * 100).toFixed(d).replace('.', ',') + '%';
   const num = (x, d = 1) => (Math.round(x * 10 ** d) / 10 ** d).toString().replace('.', ',');
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const HE = { kim: 'Kim', moc: 'Mộc', thuy: 'Thủy', hoa: 'Hỏa', tho: 'Thổ', bang: 'Băng', loi: 'Lôi', phong: 'Phong', vo_sac: 'Vô sắc' };
   const heTen = (h) => HE[h] ?? h;
+  function ctx() {
+    const K = S.core, st = G().state;
+    const run = clone(st.run), meta = clone(st.meta), F = K.fn, o = new Map();
+    run.rngKeys ??= {};
+    return {
+      ...G().env, run, meta, rng: new F(run.rng), enc: run.active, noticeLines: [],
+      rngFor(r) {
+        let u = o.get(r);
+        if (!u) { const l = Object.hasOwn(run.rngKeys, r) ? run.rngKeys[r] : undefined; u = l === undefined ? F.fromSeed(`${run.seed}|rng|${r}`) : new F(l); o.set(r, u); }
+        return u;
+      },
+    };
+  }
   const nvNow = () => clone(G().state.run.nhanVat);
-
+  // ───────────────────────── 3. Mô phỏng trận ─────────────────────────
   const BENCH_IDS = ['enemy.de_tu_truc_co', 'enemy.doc_hanh_kiem_khach', 'enemy.ma_tu_hut_mau', 'enemy.cuong_thi', 'enemy.am_tuong', 'enemy.lao_hoe_tinh', 'enemy.hoa_tinh', 'enemy.thuy_linh', 'enemy.mao_cuong'];
   function benchEnemies(cg, tcP = 0) {
     const K = S.core, c = C();
@@ -97,24 +119,23 @@ const TOOL_VER = '2.0.3-debug';
     return ids.map((id, i) => ({ id, E: K.Ga({ ...c.enemies.get(id), canh_gioi: cg, tieu_canh_gioi: tcs[i % 3] }, c, { muc: 'thuong' }) }));
   }
   function fight(P, E) {
-    try { 
-      return S.core.eJ(P, E, {}); 
-    } catch (e) { 
-      return { thang: false, nHiep: 30, khiHuyetThapNhat: 0, stTa: 0, _err: e.message }; 
-    }
+    try { return S.core.eJ(clone(P), clone(E), {}); } catch { return { thang: false, nHiep: 30, khiHuyetThapNhat: 0, stTa: 0 }; }
+  }
+  function enemyAt(def, cg, tc, muc) {
+    return S.core.Ga({ ...def, canh_gioi: cg, tieu_canh_gioi: tc }, C(), muc ? { muc } : {});
   }
 
+  // ───────────────────────── 4. Tối ưu kinh mạch ─────────────────────────
   function makeEval(nv0, enemies, mode) {
     const K = S.core, c = C(), cache = new Map();
     return (manh) => {
-      const key = manh.map((p) => p.item + '_' + p.x + '_' + p.y + '_' + p.xoay).sort().join('|');
+      const key = manh.map((p) => p.key).sort().join('|');
       if (cache.has(key)) return cache.get(key);
-      const nv = clone(nv0); nv.kinhMach.manh = manh.map((p) => ({ ...p }));
+      const nv = clone(nv0); nv.kinhMach.manh = manh.map((p) => ({ ...p.m }));
       const R = K.Rt(nv, c), P = K.Vr(nv, c);
-      let fightScore = 0, wins = 0, errCount = 0, lastErr = '';
+      let fightScore = 0, wins = 0;
       for (const { E } of enemies) {
         const r = fight(P, E);
-        if (r._err) { errCount++; lastErr = r._err; }
         const hpLeft = r.khiHuyetThapNhat / P.khiHuyetToiDa;
         const dealt = Math.min(1, (r.stTa || 0) * Math.max(1, r.nHiep) / E.khiHuyetToiDa);
         if (r.thang) { wins++; fightScore += mode === 'danh' ? 100 + 15 * hpLeft + 60 / Math.max(1, r.nHiep) : 100 + 50 * hpLeft + 25 / Math.max(1, r.nHiep); }
@@ -122,11 +143,19 @@ const TOOL_VER = '2.0.3-debug';
       }
       const thong = R.manh.filter((m) => m && m.thong).length;
       const toc = R.biDong.toc_do || 0, dp = R.biDong.dot_pha || 0;
+      const ng = R.diemNghich || 0;
+      // Linh lực: hồi mỗi lượt phải đủ ra chiêu; món không thông chỉ chiếm chỗ.
+      const ll = P.linhLucMoiLuot || 0;
+      const atk = (P.chieu || []).filter((x) => x.dang && x.phi > 0).map((x) => x.phi);
+      const minCost = atk.length ? Math.min(...atk) : 0;
+      const dead = R.manh.filter((m) => m && !m.thong).length;
+      const llScore = (mode === 'tu' ? 1 : mode === 'danh' ? 5 : 4) * ll - (minCost && ll < minCost ? 30 : 0) - 8 * dead;
       let s;
-      if (mode === 'tu') s = 0.3 * fightScore + 400 * toc + 300 * dp + 0.5 * R.linhLuc + thong;
-      else if (mode === 'danh') s = fightScore + 0.5 * R.linhLuc + 0.2 * thong;
-      else s = fightScore + 30 * toc + 20 * dp + 0.2 * thong + 0.5 * R.linhLuc;
-      const out = { s, wins, P, R, errCount, lastErr };
+      // Điểm nghịch: mỗi điểm −3% tỉ lệ đột phá (tối đa −15%), thêm phản phệ trong trận (trận mẫu đã tính).
+      if (mode === 'tu') s = 0.3 * fightScore + 400 * toc + 300 * dp + thong - 40 * ng + llScore;
+      else if (mode === 'danh') s = fightScore + 0.2 * thong - 3 * ng + llScore;
+      else s = fightScore + 30 * toc + 20 * dp + 0.2 * thong - 10 * ng + llScore;
+      const out = { s, wins, P, R };
       cache.set(key, out);
       return out;
     };
@@ -151,11 +180,43 @@ const TOOL_VER = '2.0.3-debug';
     return { cand, g };
   }
 
-  async function anneal({ nv0, mode, iters, init, onProg, label, enemies }) {
+  // Xếp tham lam nhanh (giống nút tự đặt của game): lần lượt đặt món + vị trí làm tăng điểm nhiều nhất.
+  async function greedy(nv0, mode) {
+    const K = S.core, c = C(), { cand } = buildCandidates(nv0);
+    const quick = (manh) => {
+      const nv = clone(nv0); nv.kinhMach.manh = manh.map((p) => ({ ...p.m }));
+      const R = K.Rt(nv, c);
+      const uy = (R.chieu || []).reduce((a, x) => a + (x.uyLuc || x.uy || 0) / 10, 0);
+      const toc = R.biDong.toc_do || 0, dp = R.biDong.dot_pha || 0;
+      const w = mode === 'tu' ? [0.5, 60, 40, 0.3] : mode === 'danh' ? [1.5, 3, 2, 1.2] : [1, 12, 8, 1];
+      const thongAll = R.manh.every((m) => !m || m.thong);
+      return w[0] * R.linhLuc + w[1] * toc + w[2] * dp + w[3] * uy - 6 * (R.diemNghich || 0) - (thongAll ? 0 : 1000);
+    };
+    let cur = [], curS = quick(cur);
+    for (let round = 0; round < 40; round++) {
+      let best = null;
+      const used = new Set(cur.flatMap((p) => p.cells));
+      for (const id of Object.keys(cand)) {
+        if (cur.some((p) => p.m.item === id)) continue;
+        for (const cnd of cand[id]) {
+          if (cnd.cells.some((x) => used.has(x))) continue;
+          const v = quick([...cur, cnd]);
+          if (!best || v > best.v) best = { v, cnd };
+        }
+      }
+      if (!best || best.v <= curS + 1e-9) break;
+      cur.push(best.cnd); curS = best.v;
+      if (round % 3 === 0) await sleep0();
+    }
+    return cur.map((p) => ({ ...p.m }));
+  }
+
+  async function anneal({ nv0, mode, iters, init, onProg, label }) {
+    const enemies = benchEnemies(nv0.canhGioi, nv0.tieuCanhGioi || 0);
     const ev = makeEval(nv0, enemies, mode);
     const { cand } = buildCandidates(nv0);
     const ids = Object.keys(cand).filter((k) => cand[k].length);
-    let seed = 12345; const rnd = () => { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; return seed / 4294967296; };
+    let seed = 12345; const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
     const overlaps = (manh, c, skip = -1) => { const used = new Set(); manh.forEach((p, i) => { if (i !== skip) p.cells.forEach((x) => used.add(x)); }); return c.cells.some((x) => used.has(x)); };
     let cur = [];
     if (init) for (const m of init) { const c = (cand[m.item] || []).find((c) => c.m.x === m.x && c.m.y === m.y && c.m.xoay === m.xoay); if (c && !overlaps(cur, c)) cur.push(c); }
@@ -175,35 +236,32 @@ const TOOL_VER = '2.0.3-debug';
       if (e.s >= curS || rnd() < Math.exp((e.s - curS) / T)) { cur = next; curS = e.s; if (e.s > bestS) { best = next; bestS = e.s; } }
     }
     const e = ev(best);
-    return { manh: best.map((p) => ({ ...p.m })), score: e.s, wins: e.wins, n: enemies.length, P: e.P, R: e.R, errCount: e.errCount, lastErr: e.lastErr };
+    return { manh: best.map((p) => ({ ...p.m })), score: e.s, wins: e.wins, n: enemies.length, P: e.P, R: e.R };
   }
 
-  function getCurrentManh(nv) {
-    const km = nv.kinhMach || {};
-    const arr = km.manh || km.o || km.m || km.items || km.dat || km.list || [];
-    return arr.map((m) => {
-      const itemId = m.item || m.id || m.ma;
-      return { ...m, item: itemId };
-    });
+  // Bỏ khỏi cách xếp mọi món không thông (không có tác dụng gì), rồi chấm lại.
+  function stripDead(nv, res, mode) {
+    let manh = res.manh.slice();
+    for (let k = 0; k < 5; k++) {
+      const nv2 = clone(nv); nv2.kinhMach.manh = manh;
+      const R = S.core.Rt(nv2, C());
+      const keep = manh.filter((m, i) => R.manh[i] && R.manh[i].thong);
+      if (keep.length === manh.length) break;
+      manh = keep;
+    }
+    if (manh.length === res.manh.length) return res;
+    const nv3 = clone(nv); nv3.kinhMach.manh = manh;
+    return { ...evalCurrent(nv3, mode), manh };
   }
-
-  function evalCurrent(nv, mode, enemies) {
+  function evalCurrent(nv, mode) {
+    const enemies = benchEnemies(nv.canhGioi, nv.tieuCanhGioi || 0);
     const ev = makeEval({ ...clone(nv), kinhMach: { ...clone(nv.kinhMach), manh: [] } }, enemies, mode);
-    const manh = getCurrentManh(nv);
+    const manh = nv.kinhMach.manh.map((m) => ({ m, key: m.item + ':' + m.x + ',' + m.y + ',' + m.xoay }));
     const e = ev(manh);
-    return { manh: clone(manh), score: e.s, wins: e.wins, n: enemies.length, P: e.P, R: e.R, errCount: e.errCount, lastErr: e.lastErr };
+    return { manh: clone(nv.kinhMach.manh), score: e.s, wins: e.wins, n: enemies.length, P: e.P, R: e.R };
   }
 
-  // Hàm lấy mẫu cấu trúc dữ liệu để debug
-  function getDebugInfo(nv) {
-    const km = nv.kinhMach || {};
-    const keys = Object.keys(km).join(', ');
-    const manh = getCurrentManh(nv);
-    return `Các key trong kinhMach: <b>${keys}</b><br>
-            Số món tìm thấy: <b>${manh.length}</b><br>
-            Mẫu món đầu tiên: <code style="font-size:11px;word-break:break-all">${manh.length ? JSON.stringify(manh[0]) : 'Không có'}</code>`;
-  }
-
+  // ───────────────────────── 5. Vẽ kinh mạch ─────────────────────────
   const BASE = { thuy: ['#3f6fb5', '#5a8fd6', '#2c5592', '#6f9fd0'], bang: ['#5fb8c9', '#86cfdc', '#3e9db0'], vo_sac: ['#7d7a76', '#9a958e', '#5f5c58'], hoa: ['#c0392b', '#d9622b', '#a8321f'], tho: ['#8a6a2e', '#a07a3a', '#6e5524'], kim: ['#c9a227', '#8f7a2a', '#e0b84a', '#a8892c', '#d4a017'], moc: ['#3f8f4a', '#5aa865', '#2f6f38'], loi: ['#7a4fb5', '#9a6fd0'], phong: ['#3fa08f', '#5cbfae'] };
   const TINT = { thuy: '#cfdcef', bang: '#d3ecf0', vo_sac: '#dcd6cc', hoa: '#efc2b4', kim: '#f1e3b0', tho: '#e3d2b0', moc: '#cfe6c8', loi: '#ddd0ef', phong: '#cdebe5' };
 
@@ -215,13 +273,13 @@ const TOOL_VER = '2.0.3-debug';
     const own = {}, cols = [], used = {}, pieces = [];
     const R = K.Rt(nv2, c);
     manh.forEach((m, n) => {
-      const it = c.items.get(m.item); if(!it) return;
-      const he = (it.he || ['vo_sac'])[0];
+      const it = c.items.get(m.item); const he = (it.he || ['vo_sac'])[0];
       const pal = BASE[he] || ['#888']; cols.push(pal[(used[he] = (used[he] || 0) + 1) % pal.length]);
       const cells = K.al(g, m, it) || []; cells.forEach((x) => (own[x] = n));
       const rm = R.manh[n];
       pieces.push({ it, cells, thong: rm ? rm.thong : false, heSo: rm ? rm.heSo : 0, onHuyet: cells.some((x) => hy.has(x)) });
     });
+    // chỉ vẽ vùng có ô mở
     let x0 = 99, y0 = 99, x1 = -1, y1 = -1;
     for (let i = 0; i < g.rong * g.cao; i++) if (km.trangThai[i] !== 'an' || own[i] !== undefined) { const x = i % g.rong, y = Math.floor(i / g.rong); x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
     x0 = Math.max(0, x0 - 1); y0 = Math.max(0, y0 - 1); x1 = Math.min(g.rong - 1, x1 + 1); y1 = Math.min(g.cao - 1, y1 + 1);
@@ -259,6 +317,7 @@ const TOOL_VER = '2.0.3-debug';
     return `<img class="vk-img" src="${cv.toDataURL('image/png')}" alt="kinh mạch"><div class="vk-note">Chấm vàng = huyệt · 丹 = đan điền · × = ô tắc. Giữ tay lên ảnh để lưu.</div>${legend}`;
   }
 
+  // ── Giao diện
   const css = `
   #vk-root{position:fixed;inset:0;z-index:2147483000;background:#f3ece0;color:#1e1512;font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column}
   #vk-root *{box-sizing:border-box}
@@ -300,7 +359,7 @@ const TOOL_VER = '2.0.3-debug';
   S.show = () => { root.style.display = 'flex'; fab.style.display = 'none'; render(); };
   S.hide = () => { S.abort = true; root.style.display = 'none'; fab.style.display = 'block'; };
   root.querySelector('#vk-x').onclick = S.hide; fab.onclick = S.show;
-  root.querySelector('#vk-rf').onclick = () => { S.abort = true; S.best = null; render(); };
+  root.querySelector('#vk-rf').onclick = () => { S.best = null; render(); };
   const errBox = (e) => `<div class="vk-err"><b>Có lỗi:</b> ${esc(e && e.message || e)}<br><span class="vk-mu" style="font-size:12px">Tool ${TOOL_VER}${S.core ? ' · game ' + esc(S.core.bundle) : ''}. Nếu lỗi lặp lại, chụp màn hình gửi Claude.</span></div>`;
   async function render() {
     try {
@@ -317,13 +376,16 @@ const TOOL_VER = '2.0.3-debug';
     return (f, label) => { box.querySelector('i').style.width = Math.round(f * 100) + '%'; box.querySelector('.vk-mu').textContent = (label || '') + ' ' + Math.round(f * 100) + '%'; };
   }
   function statRows(a, b) {
-    const ch = (r) => r.P.chieu.filter((x) => x.dang !== undefined).map((x) => `${esc(x.ten)} (${Math.round(x.uy ?? 0)})`).join(', ');
+    const ch = (r) => r.P.chieu.filter((x) => x.dang !== undefined).map((x) => `${esc(x.ten)} (${Math.round(x.uy)})`).join(', ');
     const rows = [
       ['Thắng trận mẫu', `${a.wins}/${a.n}`, `${b.wins}/${b.n}`],
       ['Khí huyết', Math.round(a.P.khiHuyetToiDa), Math.round(b.P.khiHuyetToiDa)],
-      ['Linh lực / lượt', num(a.P.linhLucMoiLuot), num(b.P.linhLucMoiLuot)],
+      ['Linh lực hồi / lượt', num(a.P.linhLucMoiLuot), num(b.P.linhLucMoiLuot)],
+      ['Linh lực tối đa', num(a.P.linhLucToiDa ?? a.P.linhLucMoiLuot * 3), num(b.P.linhLucToiDa ?? b.P.linhLucMoiLuot * 3)],
+      ['Chiêu tốn nhiều nhất', num(Math.max(0, ...a.P.chieu.map((x) => x.phi || 0))), num(Math.max(0, ...b.P.chieu.map((x) => x.phi || 0)))],
       ['Tu luyện', '+' + pct(a.R.biDong.toc_do || 0), '+' + pct(b.R.biDong.toc_do || 0)],
       ['Đột phá', '+' + pct(a.R.biDong.dot_pha || 0, 1), '+' + pct(b.R.biDong.dot_pha || 0, 1)],
+      ['Điểm nghịch', a.R.diemNghich || 0, b.R.diemNghich || 0],
     ];
     return `<table class="vk-t"><tr><th></th><th>Đang xếp</th><th>Bản mới</th></tr>${rows.map((r) => `<tr><td>${r[0]}</td><td>${r[1]}</td><td><b>${r[2]}</b></td></tr>`).join('')}
     <tr><td>Chiêu</td><td>${ch(a)}</td><td>${ch(b)}</td></tr></table>`;
@@ -333,16 +395,9 @@ const TOOL_VER = '2.0.3-debug';
     const nv = nvNow();
     const tac = nv.kinhMach.trangThai.map((s, i) => (s === 'tac' ? i : -1)).filter((i) => i >= 0);
     const mo = (nv.kinhMach.cho && nv.kinhMach.cho.mo) || 0;
-    
-    // Bảng chẩn đoán
-    const debugHtml = `<div style="background:#fff3cd;border:1px solid #ffe69c;padding:10px;border-radius:8px;margin-bottom:10px;font-size:13px">
-      <b>Thông tin chẩn đoán:</b><br>${getDebugInfo(nv)}
-    </div>`;
-
     body.innerHTML = `
-    ${debugHtml}
     <div class="vk-card"><h3>Xếp kinh mạch tối ưu</h3>
-      <div class="vk-mu" style="font-size:13px">Tool thử hàng nghìn cách xếp các món trong túi, đánh thử 9 trận mẫu cùng cảnh giới cho mỗi cách và giữ cách tốt nhất.</div>
+      <div class="vk-mu" style="font-size:13px">Tool thử hàng nghìn cách xếp các món trong túi, đánh thử ${'9'} trận mẫu cùng cảnh giới cho mỗi cách và giữ cách tốt nhất.</div>
       <div style="margin:8px 0"><select class="vk-sel" id="vk-mode"><option value="bal">Cân bằng (đánh + tu luyện)</option><option value="danh">Ưu tiên đánh nhau</option><option value="tu">Ưu tiên tu luyện / đột phá</option></select>
       <select class="vk-sel" id="vk-it"><option value="1500">Nhanh</option><option value="3000" selected>Vừa</option><option value="6000">Kỹ (lâu)</option></select></div>
       <button class="vk-btn" id="vk-go">Bắt đầu xếp</button>
@@ -351,8 +406,18 @@ const TOOL_VER = '2.0.3-debug';
       <div class="vk-mu" style="font-size:13px">Có ${tac.length} ô tắc · còn ${mo} lượt khai thông. Tool thử mở từng ô rồi xếp lại để xem ô nào lợi nhất.</div>
       <button class="vk-btn" id="vk-op" ${tac.length ? '' : 'disabled'}>Tìm ô nên mở</button>
       ${progressHtml('vk-pr2')}<div id="vk-out2"></div></div>
-    <div class="vk-card"><h3>Đang xếp trong game</h3><div id="vk-cur"></div></div>`;
-    try { body.querySelector('#vk-cur').innerHTML = drawGrid(nv, getCurrentManh(nv)); } catch (e) { body.querySelector('#vk-cur').innerHTML = errBox(e); }
+    <div class="vk-card"><h3>Đang xếp trong game</h3><div id="vk-cur"></div></div>
+    <div class="vk-card"><h3>Nguyên lý kinh mạch (đọc từ code game)</h3><ul style="margin:0;padding-left:18px;font-size:14px">
+      <li><b>Thông:</b> tâm pháp/đấu pháp thông khi chạm đan điền hoặc chạm một công pháp đã thông (nối thành chuỗi). Pháp khí thông khi chạm đan điền hoặc chạm công pháp đã thông. Món không thông = không có tác dụng.</li>
+      <li><b>Màu ô:</b> hệ số = 0,85 + 0,45 × độ hợp trung bình các ô (đúng hệ = 1; cùng gốc như Băng–Thủy hoặc có Vô sắc = 0,5; khác hệ = 0). Đặt đúng màu tối đa ×1,3.</li>
+      <li><b>Huyệt:</b> phủ 1 huyệt ×2, mỗi huyệt thêm +0,25. Nên đặt món mạnh nhất (chiêu chính, pháp khí thủ) lên huyệt.</li>
+      <li><b>Sinh khắc:</b> mỗi món kề bên (đã thông) mà hệ của nó sinh ra hệ món này +15%, mỗi món khắc −15% (thấp nhất ×0,4).</li>
+      <li><b>Kinh lộ (pháp khí):</b> chuỗi công pháp từ đan điền tới pháp khí, mỗi công pháp cùng họ hệ +10% (tối đa 5).</li>
+      <li><b>Nội tại:</b> món nhiều hệ mà các hệ sinh nhau ×1,1.</li>
+      <li><b>Điểm nghịch</b> (+1 mỗi cặp món kề nhau khắc nhau, +1 mỗi món đặt quá nửa trên ô khắc nó, +1 mỗi món tự có hệ khắc nhau): mỗi điểm −3% tỉ lệ đột phá (tối đa −15%) và gây phản phệ trong trận. Tool trừ điểm nghịch khi xếp.</li>
+      <li><b>Tâm pháp:</b> tốc độ tu luyện/đột phá/kháng tâm ma không nhân hệ số, chỉ cần thông; linh lực và chỉ số thì nhân hệ số. Món Vô sắc cho linh lực ×0,85.</li>
+    </ul></div>`;
+    try { body.querySelector('#vk-cur').innerHTML = drawGrid(nv, nv.kinhMach.manh); } catch (e) { body.querySelector('#vk-cur').innerHTML = errBox(e); }
     if (S.best && S.best.nvKey === JSON.stringify([nv.tuiDo, nv.kinhMach.trangThai, nv.canhGioi, nv.tieuCanhGioi])) showBest(nv);
     body.querySelector('#vk-go').onclick = async (ev) => {
       ev.target.disabled = true; S.abort = false;
@@ -360,12 +425,16 @@ const TOOL_VER = '2.0.3-debug';
       const prog = bindProgress(body.querySelector('#vk-pr'));
       try {
         const nv0 = clone(nv); nv0.kinhMach.manh = [];
-        const enemies = benchEnemies(nv.canhGioi, nv.tieuCanhGioi || 0);
-        const cur = evalCurrent(nv, mode, enemies);
-        const a = await anneal({ nv0, mode, iters, init: null, enemies, onProg: (f) => prog(f * 0.6, 'Đang tìm…') });
-        const b = await anneal({ nv0, mode, iters: Math.round(iters / 2), init: (a.score >= cur.score ? a : cur).manh, enemies, onProg: (f) => prog(0.6 + f * 0.4, 'Đang tinh chỉnh…') });
-        let best = [a, b].sort((x, y) => y.score - x.score)[0];
-        if (cur.score >= best.score) best = { ...cur, same: true };
+        const cur = evalCurrent(nv, mode);
+        prog(0.02, 'Xếp nhanh…');
+        const g0 = await greedy(nv0, mode);
+        const a = await anneal({ nv0, mode, iters: Math.round(iters * 0.6), init: g0, onProg: (f) => prog(0.05 + f * 0.35, 'Tìm từ bản xếp nhanh…') });
+        const a2 = await anneal({ nv0, mode, iters: Math.round(iters * 0.6), init: null, onProg: (f) => prog(0.4 + f * 0.3, 'Tìm từ đầu…') });
+        const top = [a, a2, cur].sort((x, y) => y.score - x.score)[0];
+        const b = await anneal({ nv0, mode, iters: Math.round(iters / 2), init: top.manh, onProg: (f) => prog(0.7 + f * 0.3, 'Đang tinh chỉnh…') });
+        let best = [a, a2, b].sort((x, y) => y.score - x.score)[0];
+        best = stripDead(nv, best, mode);
+        if (cur.score >= best.score && !(cur.R.manh || []).some((m) => m && !m.thong)) best = { ...cur, same: true };
         S.best = { nvKey: JSON.stringify([nv.tuiDo, nv.kinhMach.trangThai, nv.canhGioi, nv.tieuCanhGioi]), cur, best, mode };
         body.querySelector('#vk-pr').style.display = 'none';
         showBest(nv);
@@ -378,12 +447,11 @@ const TOOL_VER = '2.0.3-debug';
       const mode = body.querySelector('#vk-mode').value;
       try {
         const nv0 = clone(nv); nv0.kinhMach.manh = [];
-        const enemies = benchEnemies(nv.canhGioi, nv.tieuCanhGioi || 0);
-        const base = await anneal({ nv0, mode, iters: 800, init: getCurrentManh(nv), enemies, onProg: (f) => prog(f / (tac.length + 1), 'Mốc hiện tại…') });
+        const base = await anneal({ nv0, mode, iters: 800, init: nv.kinhMach.manh, onProg: (f) => prog(f / (tac.length + 1), 'Mốc hiện tại…') });
         const res = [];
         for (let k = 0; k < tac.length && !S.abort; k++) {
           const i = tac[k]; const nvO = clone(nv0); nvO.kinhMach.trangThai[i] = 'thong';
-          const r = await anneal({ nv0: nvO, mode, iters: 600, init: base.manh, enemies, onProg: (f) => prog((k + 1 + f) / (tac.length + 1), `Thử ô ${k + 1}/${tac.length}…`) });
+          const r = await anneal({ nv0: nvO, mode, iters: 600, init: base.manh, onProg: (f) => prog((k + 1 + f) / (tac.length + 1), `Thử ô ${k + 1}/${tac.length}…`) });
           res.push({ i, r, gain: r.score - base.score });
         }
         res.sort((x, y) => y.gain - x.gain);
@@ -405,19 +473,31 @@ const TOOL_VER = '2.0.3-debug';
   function showBest(nv) {
     const { cur, best } = S.best; const out = body.querySelector('#vk-out');
     if (!out) return;
-    
-    let errHtml = '';
-    if (cur.errCount > 0 || best.errCount > 0) {
-      errHtml = `<div class="vk-err" style="margin-bottom:10px">
-        <b>Phát hiện lỗi mô phỏng trận đánh!</b><br>
-        - Lúc tính "Đang xếp": lỗi ${cur.errCount}/${cur.n} trận. (Lỗi: ${cur.lastErr})<br>
-        - Lúc tính "Bản mới": lỗi ${best.errCount}/${best.n} trận. (Lỗi: ${best.lastErr})
-      </div>`;
-    }
-
-    out.innerHTML = errHtml + (best.same ? '<div class="vk-ok" style="margin:6px 0">Cách đang xếp đã tốt nhất tool tìm được.</div>' : '<div class="vk-ok" style="margin:6px 0">Xếp lại trong game theo ảnh dưới:</div>' + drawGrid(nv, best.manh)) + statRows(cur, best) +
-      '<div class="vk-mu" style="font-size:12px;margin-top:6px">Trận mẫu: 9 loại quái cùng cảnh giới với bạn, ở tiểu cảnh giới quanh mức của bạn (thấp hơn 1, bằng, cao hơn 1).</div>';
+    out.innerHTML = (best.same ? '<div class="vk-ok" style="margin:6px 0">Cách đang xếp đã tốt nhất tool tìm được.</div>' : '<div class="vk-ok" style="margin:6px 0">Xếp lại trong game theo ảnh dưới:</div>' + drawGrid(nv, best.manh)) + statRows(cur, best) +
+      ((best.R && best.R.diemNghich) ? `<div class="vk-mu" style="font-size:12px;margin-top:6px">Cách này còn ${best.R.diemNghich} điểm nghịch (−${Math.min(15, 3 * best.R.diemNghich)}% tỉ lệ đột phá). Lúc chuẩn bị đột phá, chọn chế độ "Ưu tiên tu luyện / đột phá" để tool ưu tiên xóa điểm nghịch.</div>` : '') +
+      '<div class="vk-mu" style="font-size:12px;margin-top:6px">Trận mẫu: 9 loại quái cùng cảnh giới với bạn, ở tiểu cảnh giới quanh mức của bạn (thấp hơn 1, bằng, cao hơn 1).</div>' + pieceTable(best.R) + sellAdvice(nv, best);
   }
+  // Đồ công pháp/pháp khí không có mặt trong cách xếp tốt nhất → đề xuất bán
+  function sellAdvice(nv, best) {
+    const used = new Set(best.manh.map((m) => m.item));
+    const c = ctx(), Cc = C(), K = S.core;
+    const rows = Object.entries(nv.tuiDo).filter(([id, n]) => n > 0 && !used.has(id)).map(([id, n]) => ({ it: Cc.items.get(id), n, id })).filter((x) => x.it && (x.it.loai === 'cong_phap' || x.it.loai === 'phap_khi'));
+    if (!rows.length) return '';
+    const price = (id, it) => { try { return K.IP ? K.IP(c, id, undefined, 0) : Math.round((it.gia || 0) * 0.6); } catch { return Math.round((it.gia || 0) * 0.6); } };
+    const topPham = Math.max(0, ...best.manh.map((m) => Cc.items.get(m.item)?.pham_cap || 0));
+    rows.forEach((x) => { x.p = price(x.id, x.it); x.why = !x.it.hinh ? 'không đặt lên kinh mạch được' : (x.it.canh_gioi ?? 0) > nv.canhGioi ? 'chưa đủ cảnh giới — giữ lại' : (x.it.pham_cap || 0) >= topPham ? 'phẩm cao nhưng chưa có chỗ — cân nhắc giữ để dùng khi mở thêm ô' : 'yếu hơn đồ đang xếp — nên bán'; });
+    rows.sort((a, b) => b.p * b.n - a.p * a.n);
+    const sellable = rows.filter((x) => x.why.endsWith('nên bán') || x.why.startsWith('không đặt'));
+    const total = sellable.reduce((a, x) => a + x.p * x.n, 0);
+    return `<div style="margin-top:10px"><b>Đồ nên bán</b> <span class="vk-mu" style="font-size:13px">(không dùng trong cách xếp tốt nhất; bán phần "nên bán" được khoảng ${Math.round(total)} linh thạch ở chỗ đang đứng)</span><table class="vk-t">${rows.map((x) => `<tr><td>${esc(x.it.ten)}${x.n > 1 ? ' ×' + x.n : ''}<br><span class="vk-mu" style="font-size:12px">phẩm ${x.it.pham_cap} · ${x.why}</span></td><td>${Math.round(x.p * x.n)}</td></tr>`).join('')}</table><div class="vk-mu" style="font-size:12px">Trước khi bán: nếu sắp lên cảnh giới mới hoặc sắp mở thêm ô kinh mạch, xếp lại một lần nữa để chắc món đó vẫn thừa.</div></div>`;
+  }
+  function pieceTable(R) {
+    if (!R || !R.manh) return '';
+    const f = (x) => (Math.abs(x - 1) < 0.005 ? '' : '×' + num(x, 2));
+    const rows = R.manh.map((m, i) => !m ? '' : `<tr><td>${i + 1}. ${esc(m.item.ten)}${m.thong ? '' : ' <span class="vk-bad">không thông</span>'}</td><td><b>${num(m.heSo, 2)}</b></td><td style="font-size:12px">${[['màu', m.mau], ['huyệt', m.huyet], ['sinh khắc', m.sinhKhac], ['nội tại', m.noiTai], ['kinh lộ', m.kinhLo]].filter(([, v]) => v && Math.abs(v - 1) >= 0.005).map(([k, v]) => `${k} ${f(v)}`).join(' · ') || '—'}</td></tr>`).join('');
+    return `<details style="margin-top:8px"><summary>Hệ số từng món (vì sao xếp vậy)</summary><table class="vk-t"><tr><th>Món</th><th>Hệ số</th><th>Đến từ</th></tr>${rows}</table><div class="vk-mu" style="font-size:12px">Hệ số nhân vào linh lực, uy lực chiêu, khí huyết/hộ thể/chỉ số của món. Tốc độ tu luyện, đột phá, kháng tâm ma của tâm pháp không nhân hệ số — chỉ cần thông.</div></details>`;
+  }
+
 
   S.show();
 })();
