@@ -333,6 +333,7 @@ const TOOL_VER = '2.2.0-km';
   #vk-tabs{display:flex;overflow-x:auto;background:#eadfc6;border-bottom:1px solid #cdbf9f}
   #vk-tabs button{flex:0 0 auto;border:0;background:none;padding:10px 12px;font-size:14px;color:#5a4a3a;border-bottom:3px solid transparent}
   #vk-tabs button.on{color:#7a1f1a;border-bottom-color:#7a1f1a;font-weight:700}
+  [data-ks][hidden]{display:none}
   #vk-body{flex:1;overflow-y:auto;padding:12px 14px 40px}
   .vk-card{background:#fbf7ef;border:1px solid #ddd0b4;border-radius:10px;padding:10px 12px;margin:0 0 12px}
   .vk-card h3{margin:0 0 6px;font-size:16px;color:#7a1f1a}
@@ -525,30 +526,14 @@ const TOOL_VER = '2.2.0-km';
     const nv = nvNow();
     const tac = nv.kinhMach.trangThai.map((s, i) => (s === 'tac' ? i : -1)).filter((i) => i >= 0);
     const mo = (nv.kinhMach.cho && nv.kinhMach.cho.mo) || 0;
+    const KT = [['cur', 'Hiện tại'], ['opt', 'Xếp tối ưu'], ['buy', 'Nên mua'], ['cat', 'Danh mục']];
+    S.kt = S.kt || 'opt';
     body.innerHTML = `
-    <div class="vk-card"><h3>Xếp kinh mạch tối ưu</h3>
-      <div class="vk-mu" style="font-size:13px">Tool thử hàng nghìn cách xếp các món trong túi, đánh thử ${'9'} trận mẫu cùng cảnh giới cho mỗi cách và giữ cách tốt nhất.</div>
-      <div style="margin:8px 0"><select class="vk-sel" id="vk-mode"><option value="bal">Cân bằng (đánh + tu luyện)</option><option value="danh">Ưu tiên đánh nhau</option><option value="tu">Ưu tiên tu luyện / đột phá</option></select>
-      <select class="vk-sel" id="vk-it"><option value="1500">Nhanh</option><option value="3000" selected>Vừa</option><option value="6000">Kỹ (lâu)</option></select></div>
-      <button class="vk-btn" id="vk-go">Bắt đầu xếp</button>
-      ${progressHtml('vk-pr')}<div id="vk-out"></div></div>
-    <div class="vk-card"><h3>Ô kinh mạch nên mở</h3>
-      <div class="vk-mu" style="font-size:13px">Có ${tac.length} ô tắc · còn ${mo} lượt khai thông. Tool thử mở từng ô rồi xếp lại để xem ô nào lợi nhất.</div>
-      <button class="vk-btn" id="vk-op" ${tac.length ? '' : 'disabled'}>Tìm ô nên mở</button>
-      ${progressHtml('vk-pr2')}<div id="vk-out2"></div></div>
-    <div class="vk-card"><h3>Nên mua / tìm món nào?</h3>
-      <div class="vk-mu" style="font-size:13px">Có <b>${Math.floor(nv.linhThach || 0)}</b> linh thạch. Tool thử thêm từng công pháp / pháp khí chưa có vào túi, xếp lại kinh mạch hiện tại và đánh trận mẫu để đo món nào lợi nhất. Dùng chế độ ở khối "Xếp kinh mạch tối ưu".</div>
-      <div style="margin:8px 0"><select class="vk-sel" id="vk-bp"><option value="0" selected>Giá ≤ linh thạch đang có</option><option value="300">Giá ≤ 300</option><option value="1000">Giá ≤ 1.000</option><option value="3000">Giá ≤ 3.000</option><option value="-1">Mọi giá</option></select>
-      <select class="vk-sel" id="vk-bl"><option value="split" selected>Cả 4 loại, xếp riêng từng loại</option><option value="all">Cả 4 loại, xếp chung</option><option value="tam">Chỉ tâm pháp (tu luyện)</option><option value="dau">Chỉ đấu pháp (có chiêu)</option><option value="khi">Chỉ pháp khí (có chiêu)</option><option value="bao">Chỉ bảo vật (không chiêu)</option></select>
-      <select class="vk-sel" id="vk-bn"><option value="20">Đo 20 món (nhanh)</option><option value="40" selected>Đo 40 món</option><option value="80">Đo 80 món (lâu)</option></select></div>
-      <button class="vk-btn" id="vk-by">Tìm món nên mua</button>${progressHtml('vk-pr5')}<div id="vk-bo"></div></div>
-    <div class="vk-card"><h3>Danh mục món theo cảnh giới</h3>
-      <div class="vk-mu" style="font-size:13px">Xem công pháp, đấu pháp, pháp khí theo từng cảnh giới, sắp theo thứ bạn cần. "Mạnh nhất" là điểm ước tính từ số liệu gốc của món, chưa tính chỗ đặt. Bấm "Thử trên kinh mạch của tôi" ở món nào để biết nó hợp kinh mạch hiện tại không (dùng chế độ ở khối "Xếp kinh mạch tối ưu").</div>
-      <div style="margin:8px 0;display:flex;flex-wrap:wrap;gap:6px"><input class="vk-sel" id="vk-cq" type="search" placeholder="Tìm tên món…" autocomplete="off" style="flex:1 1 100%"><select class="vk-sel" id="vk-cr"></select><select class="vk-sel" id="vk-cl"></select><select class="vk-sel" id="vk-ch"></select><select class="vk-sel" id="vk-cs"></select>
-      <label style="font-size:14px"><input type="checkbox" id="vk-clow"> Gồm cả cảnh giới thấp hơn</label></div>
-      <div id="vk-clist"></div></div>
-    <div class="vk-card"><h3>Đang xếp trong game</h3><div id="vk-cur"></div></div>
-    <div class="vk-card"><h3>Nguyên lý kinh mạch (đọc từ code game)</h3><ul style="margin:0;padding-left:18px;font-size:14px">
+    <div class="vk-card" style="margin-bottom:8px"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:14px">Mục tiêu:</b> <select class="vk-sel" id="vk-mode"><option value="bal">Cân bằng (đánh + tu luyện)</option><option value="danh">Ưu tiên đánh nhau</option><option value="tu">Ưu tiên tu luyện / đột phá</option></select></div><div class="vk-mu" style="font-size:12px;margin-top:4px">Áp dụng cho Xếp tối ưu, Nên mua và Thử món ở Danh mục.</div></div>
+    <div id="vk-kt" style="display:flex;gap:6px;margin:0 0 10px">${KT.map(([k, t]) => `<button class="vk-btn sec" data-kt="${k}" style="flex:1;margin:0;padding:8px 4px">${t}</button>`).join('')}</div>
+    <section data-ks="cur">
+    <div class="vk-card"><h3>Đang xếp trong game</h3><div id="vk-cur"></div><div id="vk-curst"></div></div>
+    <div class="vk-card"><details><summary><b>Nguyên lý kinh mạch (đọc từ code game)</b></summary><ul style="margin:0;padding-left:18px;font-size:14px">
       <li><b>Thông:</b> tâm pháp/đấu pháp thông khi chạm đan điền hoặc chạm một công pháp đã thông (nối thành chuỗi). Pháp khí thông khi chạm đan điền hoặc chạm công pháp đã thông. Món không thông = không có tác dụng.</li>
       <li><b>Màu ô:</b> hệ số = 0,85 + 0,45 × độ hợp trung bình các ô (đúng hệ = 1; cùng gốc như Băng–Thủy hoặc có Vô sắc = 0,5; khác hệ = 0). Đặt đúng màu tối đa ×1,3.</li>
       <li><b>Huyệt:</b> phủ 1 huyệt ×2, mỗi huyệt thêm +0,25. Nên đặt món mạnh nhất (chiêu chính, pháp khí thủ) lên huyệt.</li>
@@ -557,8 +542,39 @@ const TOOL_VER = '2.2.0-km';
       <li><b>Nội tại:</b> món nhiều hệ mà các hệ sinh nhau ×1,1.</li>
       <li><b>Điểm nghịch</b> (+1 mỗi cặp món kề nhau khắc nhau, +1 mỗi món đặt quá nửa trên ô khắc nó, +1 mỗi món tự có hệ khắc nhau): mỗi điểm −3% tỉ lệ đột phá (tối đa −15%) và gây phản phệ trong trận. Tool trừ điểm nghịch khi xếp.</li>
       <li><b>Tâm pháp:</b> tốc độ tu luyện/đột phá/kháng tâm ma không nhân hệ số, chỉ cần thông; linh lực và chỉ số thì nhân hệ số. Món Vô sắc cho linh lực ×0,85.</li>
-    </ul></div>`;
+    </ul></details></div>    </section>
+    <section data-ks="opt">
+    <div class="vk-card"><h3>Xếp kinh mạch tối ưu</h3>
+      <div class="vk-mu" style="font-size:13px">Tool thử hàng nghìn cách xếp các món trong túi, đánh thử ${'9'} trận mẫu cùng cảnh giới cho mỗi cách và giữ cách tốt nhất.</div>
+      <div style="margin:8px 0"><select class="vk-sel" id="vk-it"><option value="1500">Nhanh</option><option value="3000" selected>Vừa</option><option value="6000">Kỹ (lâu)</option></select></div>
+      <button class="vk-btn" id="vk-go">Bắt đầu xếp</button>
+      ${progressHtml('vk-pr')}<div id="vk-out"></div></div>
+    <div class="vk-card"><h3>Ô kinh mạch nên mở</h3>
+      <div class="vk-mu" style="font-size:13px">Có ${tac.length} ô tắc · còn ${mo} lượt khai thông. Tool thử mở từng ô rồi xếp lại để xem ô nào lợi nhất.</div>
+      <button class="vk-btn" id="vk-op" ${tac.length ? '' : 'disabled'}>Tìm ô nên mở</button>
+      ${progressHtml('vk-pr2')}<div id="vk-out2"></div></div>
+    </section>
+    <section data-ks="buy">
+    <div class="vk-card"><h3>Nên mua / tìm món nào?</h3>
+      <div class="vk-mu" style="font-size:13px">Có <b>${Math.floor(nv.linhThach || 0)}</b> linh thạch. Tool thử thêm từng công pháp / pháp khí chưa có vào túi, xếp lại kinh mạch hiện tại và đánh trận mẫu để đo món nào lợi nhất. Dùng chế độ ở khối "Xếp kinh mạch tối ưu".</div>
+      <div style="margin:8px 0"><select class="vk-sel" id="vk-bp"><option value="0" selected>Giá ≤ linh thạch đang có</option><option value="300">Giá ≤ 300</option><option value="1000">Giá ≤ 1.000</option><option value="3000">Giá ≤ 3.000</option><option value="-1">Mọi giá</option></select>
+      <select class="vk-sel" id="vk-bl"><option value="split" selected>Cả 4 loại, xếp riêng từng loại</option><option value="all">Cả 4 loại, xếp chung</option><option value="tam">Chỉ tâm pháp (tu luyện)</option><option value="dau">Chỉ đấu pháp (có chiêu)</option><option value="khi">Chỉ pháp khí (có chiêu)</option><option value="bao">Chỉ bảo vật (không chiêu)</option></select>
+      <select class="vk-sel" id="vk-bn"><option value="20">Đo 20 món (nhanh)</option><option value="40" selected>Đo 40 món</option><option value="80">Đo 80 món (lâu)</option></select></div>
+      <button class="vk-btn" id="vk-by">Tìm món nên mua</button>${progressHtml('vk-pr5')}<div id="vk-bo"></div></div>
+    </section>
+    <section data-ks="cat">
+    <div class="vk-card"><h3>Danh mục món theo cảnh giới</h3>
+      <div class="vk-mu" style="font-size:13px">Xem công pháp, đấu pháp, pháp khí theo từng cảnh giới, sắp theo thứ bạn cần. "Mạnh nhất" là điểm ước tính từ số liệu gốc của món, chưa tính chỗ đặt. Bấm "Thử trên kinh mạch của tôi" ở món nào để biết nó hợp kinh mạch hiện tại không (dùng chế độ ở khối "Xếp kinh mạch tối ưu").</div>
+      <div style="margin:8px 0;display:flex;flex-wrap:wrap;gap:6px"><input class="vk-sel" id="vk-cq" type="search" placeholder="Tìm tên món…" autocomplete="off" style="flex:1 1 100%"><select class="vk-sel" id="vk-cr"></select><select class="vk-sel" id="vk-cl"></select><select class="vk-sel" id="vk-ch"></select><select class="vk-sel" id="vk-cs"></select>
+      <label style="font-size:14px"><input type="checkbox" id="vk-clow"> Gồm cả cảnh giới thấp hơn</label></div>
+      <div id="vk-clist"></div></div>
+    </section>`;
+    const showKt = (k) => { S.kt = k; body.querySelectorAll('[data-ks]').forEach((el) => { el.hidden = el.dataset.ks !== k; }); body.querySelectorAll('[data-kt]').forEach((b) => { b.style.background = b.dataset.kt === k ? '#7a1f1a' : '#fff'; b.style.color = b.dataset.kt === k ? '#fff' : '#7a1f1a'; }); };
+    body.querySelectorAll('[data-kt]').forEach((b) => { b.onclick = () => showKt(b.dataset.kt); });
+    showKt(S.kt);
+
     try { body.querySelector('#vk-cur').innerHTML = drawGrid(nv, nv.kinhMach.manh); } catch (e) { body.querySelector('#vk-cur').innerHTML = errBox(e); }
+    try { const e0 = evalCurrent(nv, body.querySelector('#vk-mode').value); body.querySelector('#vk-curst').innerHTML = `<table class="vk-t" style="margin-top:8px"><tr><td>Thắng trận mẫu</td><td><b>${e0.wins}/${e0.n}</b></td></tr><tr><td>Khí huyết</td><td><b>${Math.round(e0.P.khiHuyetToiDa)}</b></td></tr><tr><td>Linh lực hồi / lượt</td><td><b>${num(e0.P.linhLucMoiLuot)}</b></td></tr><tr><td>Tu luyện</td><td><b>+${pct(e0.R.biDong.toc_do || 0)}</b></td></tr><tr><td>Đột phá</td><td><b>+${pct(e0.R.biDong.dot_pha || 0, 1)}</b></td></tr><tr><td>Điểm nghịch</td><td><b>${e0.R.diemNghich || 0}</b></td></tr></table>` + pieceTable(e0.R); } catch (e) { console.error(e); }
     if (S.best && S.best.nvKey === JSON.stringify([nv.tuiDo, nv.kinhMach.trangThai, nv.canhGioi, nv.tieuCanhGioi])) showBest(nv);
     body.querySelector('#vk-go').onclick = async (ev) => {
       ev.target.disabled = true; S.abort = false;
