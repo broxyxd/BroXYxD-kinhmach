@@ -384,6 +384,59 @@ const TOOL_VER = '2.2.0-km';
     box.querySelector('.vk-stop').onclick = () => { S.abort = true; };
     return (f, label) => { box.querySelector('i').style.width = Math.round(f * 100) + '%'; box.querySelector('.vk-mu').textContent = (label || '') + ' ' + Math.round(f * 100) + '%'; };
   }
+  function itemDesc(it) {
+    const b = it.bi_dong || {}, out = [];
+    if (it.linh_luc) out.push(`linh lực ${num(it.linh_luc, 2)}`);
+    const sg = (v, d = 0) => (v >= 0 ? '+' : '') + pct(v, d);
+    if (b.toc_do) out.push(`tu luyện ${sg(b.toc_do)}`);
+    if (b.dot_pha) out.push(`đột phá ${sg(b.dot_pha)}`);
+    if (b.khi_huyet) out.push(`khí huyết ${sg(b.khi_huyet)}`);
+    if (b.ho_the) out.push(`hộ thể ${sg(b.ho_the, 1)}`);
+    if (b.khang_tam_ma) out.push(`kháng tâm ma ${b.khang_tam_ma > 0 ? '+' : ''}${pct(b.khang_tam_ma)}`);
+    for (const [k, v] of Object.entries(b.chi_so || {})) out.push(`${({ than_thuc: 'thần thức', ngo_tinh: 'ngộ tính', than_phap: 'thân pháp', can_cot: 'căn cốt', dao_tam: 'đạo tâm', khi_van: 'khí vận' })[k] || k} +${v}`);
+    if (it.chieu) out.push(`chiêu <b>${esc(it.chieu.ten)}</b> (${({ cong: 'đánh', thu: 'thủ', hoi_phuc: 'hồi máu', khong_che: 'khống chế' })[it.chieu.dang] || it.chieu.dang}, uy ${num(it.chieu.uy, 2)}${it.chieu.scope ? ', đánh lan' : ''})`);
+    return out.join(' · ');
+  }
+
+  // ── Nên mua / tìm món nào hợp kinh mạch hiện tại
+  function bindBuy(nv) {
+    const c = C(), money = Math.floor(nv.linhThach || 0);
+    body.querySelector('#vk-by').onclick = async (ev) => {
+      ev.target.disabled = true; S.abort = false;
+      const mode = body.querySelector('#vk-mode').value;
+      const capSel = +body.querySelector('#vk-bp').value, nTop = +body.querySelector('#vk-bn').value;
+      const budget = capSel === 0 ? money : capSel;
+      const out = body.querySelector('#vk-bo'), prog = bindProgress(body.querySelector('#vk-pr5'));
+      try {
+        const cands = [...c.items.values()].filter((it) => (it.loai === 'cong_phap' || it.loai === 'phap_khi') && it.hinh && (it.canh_gioi ?? 0) <= nv.canhGioi && !(nv.tuiDo[it.id] > 0) && (budget < 0 || (it.gia || 0) <= budget))
+          .sort((a, b) => (b.pham_cap || 0) - (a.pham_cap || 0) || (a.gia || 0) - (b.gia || 0)).slice(0, nTop);
+        if (!cands.length) { out.innerHTML = '<div class="vk-mu" style="margin:6px 0">Không có món nào trong tầm giá và cảnh giới này.</div>'; prog(1, ''); ev.target.disabled = false; return; }
+        const nv0 = clone(nv); nv0.kinhMach.manh = [];
+        const base = await anneal({ nv0, mode, iters: 1200, init: nv.kinhMach.manh, onProg: (f) => prog(f / (cands.length + 1), 'Mốc hiện tại…') });
+        const res = [];
+        for (let k = 0; k < cands.length && !S.abort; k++) {
+          const it = cands[k], nvX = clone(nv0); nvX.tuiDo[it.id] = 1;
+          const r = await anneal({ nv0: nvX, mode, iters: 500, init: base.manh, onProg: (f) => prog((k + 1 + f) / (cands.length + 1), `Thử ${it.ten} (${k + 1}/${cands.length})…`) });
+          res.push({ it, r, nvX, gain: r.score - base.score });
+        }
+        res.sort((a, b) => b.gain - a.gain);
+        body.querySelector('#vk-pr5').style.display = 'none';
+        S.buy = res;
+        const good = res.filter((x) => x.gain > 1).slice(0, 15);
+        out.innerHTML = good.length
+          ? `<div class="vk-mu" style="font-size:13px;margin:6px 0">Đã thử ${res.length} món. Mốc hiện tại: thắng ${base.wins}/${base.n} trận mẫu. "Lợi" = mức tăng điểm so với cách xếp tốt nhất hiện có (đã tính xếp lại kinh mạch). Giá là giá gốc, tiệm có thể bán khác.</div><table class="vk-t"><tr><th>Món</th><th>Giá gốc</th><th>Lợi</th></tr>` +
+            good.map((x, i) => `<tr><td><b>${esc(x.it.ten)}</b><br><span class="vk-mu" style="font-size:12px">${esc((x.it.he || ['vo_sac']).map(heTen).join('/'))} · phẩm ${x.it.pham_cap} · ${itemDesc(x.it)}</span><br><button class="vk-btn sec" data-bi="${i}" style="padding:3px 8px;font-size:13px">Xem cách xếp</button></td><td>${x.it.gia ?? '?'}</td><td class="vk-ok">+${Math.round(x.gain)}<br><span class="vk-mu" style="font-size:12px">thắng ${x.r.wins}/${x.r.n}</span></td></tr>`).join('') + '</table><div id="vk-bv"></div>'
+          : '<div class="vk-mu" style="margin:6px 0">Không món nào trong tầm giá giúp rõ rệt so với đồ bạn đang có. Thử nâng mức giá hoặc đo thêm nhiều món.</div>';
+        out.querySelectorAll('[data-bi]').forEach((b) => { b.onclick = () => {
+          const x = good[+b.dataset.bi], r = stripDead(x.nvX, x.r, mode);
+          out.querySelector('#vk-bv').innerHTML = `<div class="vk-ok" style="margin:8px 0">Nếu có ${esc(x.it.ten)}, xếp như sau:</div>` + drawGrid(nv, r.manh) + stepList(nv, r.manh, nv.kinhMach.manh);
+          out.querySelector('#vk-bv').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }; });
+      } catch (e) { console.error(e); out.innerHTML = errBox(e); }
+      ev.target.disabled = false;
+    };
+  }
+
   function statRows(a, b) {
     const ch = (r) => r.P.chieu.filter((x) => x.dang !== undefined).map((x) => `${esc(x.ten)} (${Math.round(x.uy)})`).join(', ');
     const rows = [
@@ -415,6 +468,11 @@ const TOOL_VER = '2.2.0-km';
       <div class="vk-mu" style="font-size:13px">Có ${tac.length} ô tắc · còn ${mo} lượt khai thông. Tool thử mở từng ô rồi xếp lại để xem ô nào lợi nhất.</div>
       <button class="vk-btn" id="vk-op" ${tac.length ? '' : 'disabled'}>Tìm ô nên mở</button>
       ${progressHtml('vk-pr2')}<div id="vk-out2"></div></div>
+    <div class="vk-card"><h3>Nên mua / tìm món nào?</h3>
+      <div class="vk-mu" style="font-size:13px">Có <b>${Math.floor(nv.linhThach || 0)}</b> linh thạch. Tool thử thêm từng công pháp / pháp khí chưa có vào túi, xếp lại kinh mạch hiện tại và đánh trận mẫu để đo món nào lợi nhất. Dùng chế độ ở khối "Xếp kinh mạch tối ưu".</div>
+      <div style="margin:8px 0"><select class="vk-sel" id="vk-bp"><option value="0" selected>Giá ≤ linh thạch đang có</option><option value="300">Giá ≤ 300</option><option value="1000">Giá ≤ 1.000</option><option value="3000">Giá ≤ 3.000</option><option value="-1">Mọi giá</option></select>
+      <select class="vk-sel" id="vk-bn"><option value="20">Đo 20 món (nhanh)</option><option value="40" selected>Đo 40 món</option><option value="80">Đo 80 món (lâu)</option></select></div>
+      <button class="vk-btn" id="vk-by">Tìm món nên mua</button>${progressHtml('vk-pr5')}<div id="vk-bo"></div></div>
     <div class="vk-card"><h3>Đang xếp trong game</h3><div id="vk-cur"></div></div>
     <div class="vk-card"><h3>Nguyên lý kinh mạch (đọc từ code game)</h3><ul style="margin:0;padding-left:18px;font-size:14px">
       <li><b>Thông:</b> tâm pháp/đấu pháp thông khi chạm đan điền hoặc chạm một công pháp đã thông (nối thành chuỗi). Pháp khí thông khi chạm đan điền hoặc chạm công pháp đã thông. Món không thông = không có tác dụng.</li>
@@ -450,6 +508,7 @@ const TOOL_VER = '2.2.0-km';
       } catch (e) { console.error(e); body.querySelector('#vk-out').innerHTML = errBox(e); }
       ev.target.disabled = false;
     };
+    bindBuy(nv);
     body.querySelector('#vk-op').onclick = async (ev) => {
       ev.target.disabled = true; S.abort = false;
       const prog = bindProgress(body.querySelector('#vk-pr2'));
