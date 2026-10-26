@@ -441,6 +441,57 @@ const TOOL_VER = '2.2.0-km';
     };
   }
 
+
+  // ── Danh mục món theo cảnh giới (đọc trực tiếp từ dữ liệu game) + thử từng món trên kinh mạch đang có
+  const REALMS = ['Phàm Nhân', 'Luyện Khí', 'Trúc Cơ', 'Kết Đan', 'Nguyên Anh', 'Hóa Thần'];
+  const PHAM = ['', 'Phàm', 'Hoàng', 'Huyền', 'Địa', 'Thiên', 'Tiên', 'Thần', 'Nghịch Thiên'];
+  const kindOf = (it) => it.loai === 'cong_phap' ? (it.chieu ? 'Đấu pháp' : 'Tâm pháp') : (it.chieu ? 'Pháp khí' : 'Bảo vật');
+  function bindCat(nv) {
+    const c = C(), st = S.cat = S.cat || { realm: nv.canhGioi, low: true, loai: 'all', he: 'all', sort: 'toc', n: 25 };
+    const sortVal = (it, k) => { const b = it.bi_dong || {};
+      return k === 'toc' ? (b.toc_do || 0) : k === 'dp' ? (b.dot_pha || 0) : k === 'll' ? (it.linh_luc || 0) : k === 'uy' ? (it.chieu && it.chieu.dang === 'cong' ? (it.chieu.uy || 0) : 0) : k === 'kh' ? (b.khi_huyet || 0) + (b.ho_the || 0) : k === 'gia' ? -(it.gia || 0) : (it.pham_cap || 0); };
+    const sel = (id, opts, key) => body.querySelector(id).innerHTML = opts.map(([v, t]) => `<option value="${v}" ${String(st[key]) === String(v) ? 'selected' : ''}>${t}</option>`).join('');
+    sel('#vk-cr', [['all', 'Mọi cảnh giới'], ...REALMS.map((n, i) => [i, n + (i === nv.canhGioi ? ' (của bạn)' : '')])], 'realm');
+    sel('#vk-cl', [['all', 'Mọi loại'], ['Tâm pháp', 'Tâm pháp'], ['Đấu pháp', 'Đấu pháp'], ['Pháp khí', 'Pháp khí'], ['Bảo vật', 'Bảo vật']], 'loai');
+    sel('#vk-ch', [['all', 'Mọi hệ'], ...Object.entries(HE)], 'he');
+    sel('#vk-cs', [['toc', 'Tu luyện cao nhất'], ['dp', 'Đột phá cao nhất'], ['ll', 'Linh lực cao nhất'], ['uy', 'Uy lực chiêu cao nhất'], ['kh', 'Khí huyết / hộ thể cao nhất'], ['gia', 'Giá thấp nhất'], ['pham', 'Phẩm cao nhất']], 'sort');
+    body.querySelector('#vk-clow').checked = st.low;
+    const list = body.querySelector('#vk-clist');
+    let base = null;
+    const draw = () => {
+      let L = [...c.items.values()].filter((it) => (it.loai === 'cong_phap' || it.loai === 'phap_khi') && it.hinh)
+        .filter((it) => st.realm === 'all' || (st.low ? (it.canh_gioi ?? 0) <= +st.realm : (it.canh_gioi ?? 0) === +st.realm))
+        .filter((it) => st.loai === 'all' || kindOf(it) === st.loai).filter((it) => st.he === 'all' || (it.he || []).includes(st.he));
+      L.sort((a, b) => sortVal(b, st.sort) - sortVal(a, st.sort) || (a.gia || 0) - (b.gia || 0));
+      const shown = L.slice(0, st.n);
+      list.innerHTML = `<div class="vk-mu" style="font-size:13px;margin:6px 0">${L.length} món${L.length > st.n ? `, hiện ${st.n} món đầu` : ''}.</div>` + (shown.map((it, i) => {
+        const own = nv.tuiDo[it.id] > 0, ok = (it.canh_gioi ?? 0) <= nv.canhGioi;
+        return `<div style="padding:7px 0;border-bottom:1px dashed #e4d8bd"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(it.ten)}</b><span class="vk-mu">${it.gia ?? '?'} lt</span></div>
+        <div class="vk-mu" style="font-size:12px">${kindOf(it)} · ${esc((it.he || ['vo_sac']).map(heTen).join('/'))} · phẩm ${PHAM[it.pham_cap] || it.pham_cap} · ${REALMS[it.canh_gioi ?? 0]}${own ? ' · <span class="vk-ok">đã có</span>' : ''}${ok ? '' : ' · <span class="vk-bad">chưa đủ cảnh giới</span>'}</div>
+        <div style="font-size:13px">${itemDesc(it) || '—'}</div>
+        ${ok && !own ? `<button class="vk-btn sec" data-ci="${i}" style="padding:3px 8px;font-size:13px">Thử trên kinh mạch của tôi</button>` : ''}<div id="vk-cx${i}"></div></div>`; }).join('') || '<div class="vk-mu">Không có món nào khớp.</div>') +
+        (L.length > st.n ? '<button class="vk-btn sec" id="vk-cmore">Hiện thêm 25 món</button>' : '');
+      const more = list.querySelector('#vk-cmore'); if (more) more.onclick = () => { st.n += 25; draw(); };
+      list.querySelectorAll('[data-ci]').forEach((b) => { b.onclick = async () => {
+        const it = shown[+b.dataset.ci], box = list.querySelector('#vk-cx' + b.dataset.ci), mode = body.querySelector('#vk-mode').value;
+        b.disabled = true; S.abort = false; box.innerHTML = '<div class="vk-mu" style="font-size:13px">Đang thử…</div>';
+        try {
+          const nv0 = clone(nv); nv0.kinhMach.manh = [];
+          if (!base || base.mode !== mode) base = { mode, r: await anneal({ nv0, mode, iters: 1200, init: nv.kinhMach.manh }), mode };
+          const nvX = clone(nv0); nvX.tuiDo[it.id] = 1;
+          const r0 = await anneal({ nv0: nvX, mode, iters: 900, init: base.r.manh });
+          const r = stripDead(nvX, r0, mode), gain = r.score - base.r.score;
+          const used = r.manh.some((m) => m.item === it.id);
+          box.innerHTML = `<div style="margin:4px 0">${used && gain > 1 ? `<span class="vk-ok">Có lợi: +${Math.round(gain)} điểm</span>` : '<span class="vk-mu">Không giúp rõ rệt với kinh mạch hiện có</span>'} · thắng ${r.wins}/${r.n} trận mẫu (hiện ${base.r.wins}/${base.r.n})</div>` + (used && gain > 1 ? '<details><summary>Xem cách xếp</summary>' + drawGrid(nv, r.manh) + stepList(nv, r.manh, nv.kinhMach.manh) + '</details>' : '');
+        } catch (e) { console.error(e); box.innerHTML = errBox(e); }
+        b.disabled = false;
+      }; });
+    };
+    [['#vk-cr', 'realm'], ['#vk-cl', 'loai'], ['#vk-ch', 'he'], ['#vk-cs', 'sort']].forEach(([id, k]) => body.querySelector(id).onchange = (e) => { st[k] = e.target.value; st.n = 25; draw(); });
+    body.querySelector('#vk-clow').onchange = (e) => { st.low = e.target.checked; st.n = 25; draw(); };
+    draw();
+  }
+
   function statRows(a, b) {
     const ch = (r) => r.P.chieu.filter((x) => x.dang !== undefined).map((x) => `${esc(x.ten)} (${Math.round(x.uy)})`).join(', ');
     const rows = [
@@ -478,6 +529,11 @@ const TOOL_VER = '2.2.0-km';
       <select class="vk-sel" id="vk-bl"><option value="all" selected>Công pháp + pháp khí</option><option value="tam_phap">Chỉ tâm pháp (tu luyện)</option><option value="dau_phap">Chỉ đấu pháp (có chiêu)</option><option value="phap_khi">Chỉ pháp khí</option></select>
       <select class="vk-sel" id="vk-bn"><option value="20">Đo 20 món (nhanh)</option><option value="40" selected>Đo 40 món</option><option value="80">Đo 80 món (lâu)</option></select></div>
       <button class="vk-btn" id="vk-by">Tìm món nên mua</button>${progressHtml('vk-pr5')}<div id="vk-bo"></div></div>
+    <div class="vk-card"><h3>Danh mục món theo cảnh giới</h3>
+      <div class="vk-mu" style="font-size:13px">Xem công pháp, đấu pháp, pháp khí theo từng cảnh giới, sắp theo thứ bạn cần. Bấm "Thử trên kinh mạch của tôi" ở món nào để biết nó hợp kinh mạch hiện tại không (dùng chế độ ở khối "Xếp kinh mạch tối ưu").</div>
+      <div style="margin:8px 0;display:flex;flex-wrap:wrap;gap:6px"><select class="vk-sel" id="vk-cr"></select><select class="vk-sel" id="vk-cl"></select><select class="vk-sel" id="vk-ch"></select><select class="vk-sel" id="vk-cs"></select>
+      <label style="font-size:14px"><input type="checkbox" id="vk-clow"> Gồm cả cảnh giới thấp hơn</label></div>
+      <div id="vk-clist"></div></div>
     <div class="vk-card"><h3>Đang xếp trong game</h3><div id="vk-cur"></div></div>
     <div class="vk-card"><h3>Nguyên lý kinh mạch (đọc từ code game)</h3><ul style="margin:0;padding-left:18px;font-size:14px">
       <li><b>Thông:</b> tâm pháp/đấu pháp thông khi chạm đan điền hoặc chạm một công pháp đã thông (nối thành chuỗi). Pháp khí thông khi chạm đan điền hoặc chạm công pháp đã thông. Món không thông = không có tác dụng.</li>
@@ -513,7 +569,7 @@ const TOOL_VER = '2.2.0-km';
       } catch (e) { console.error(e); body.querySelector('#vk-out').innerHTML = errBox(e); }
       ev.target.disabled = false;
     };
-    bindBuy(nv);
+    bindBuy(nv); bindCat(nv);
     body.querySelector('#vk-op').onclick = async (ev) => {
       ev.target.disabled = true; S.abort = false;
       const prog = bindProgress(body.querySelector('#vk-pr2'));
