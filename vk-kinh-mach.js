@@ -283,10 +283,13 @@ const TOOL_VER = '2.2.0-km';
     let x0 = 99, y0 = 99, x1 = -1, y1 = -1;
     for (let i = 0; i < g.rong * g.cao; i++) if (km.trangThai[i] !== 'an' || own[i] !== undefined) { const x = i % g.rong, y = Math.floor(i / g.rong); x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
     x0 = Math.max(0, x0 - 1); y0 = Math.max(0, y0 - 1); x1 = Math.min(g.rong - 1, x1 + 1); y1 = Math.min(g.cao - 1, y1 + 1);
-    const Sz = 84, M = 10, W = (x1 - x0 + 1) * Sz + 2 * M, H = (y1 - y0 + 1) * Sz + 2 * M;
+    const Sz = 84, M = 28, W = (x1 - x0 + 1) * Sz + 2 * M, H = (y1 - y0 + 1) * Sz + 2 * M;
     const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     const d = cv.getContext('2d');
     d.fillStyle = '#f3ece0'; d.fillRect(0, 0, W, H);
+    d.fillStyle = '#7a1f1a'; d.font = 'bold 18px sans-serif'; d.textAlign = 'center'; d.textBaseline = 'middle';
+    for (let x = x0; x <= x1; x++) d.fillText(String(x + 1), M + (x - x0) * Sz + Sz / 2, M / 2);
+    for (let y = y0; y <= y1; y++) d.fillText(String(y + 1), M / 2, M + (y - y0) * Sz + Sz / 2);
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
       const i = y * g.rong + x, px = M + (x - x0) * Sz, py = M + (y - y0) * Sz, st = km.trangThai[i];
       let fill = st === 'an' ? '#f3ece0' : (TINT[km.mau[i]] || '#ddd');
@@ -314,13 +317,16 @@ const TOOL_VER = '2.2.0-km';
       d.lineWidth = 6; d.strokeStyle = '#1e1512'; d.strokeText(String(n + 1), px, py); d.fillStyle = '#fff'; d.fillText(String(n + 1), px, py);
     });
     const legend = pieces.map((p, n) => `<div class="vk-lg"><span class="vk-sw" style="background:${cols[n]}">${n + 1}</span><b>${esc(p.it.ten)}</b> <span class="vk-mu">· ${esc((p.it.he || ['vo_sac']).map(heTen).join('/'))}${p.onHuyet ? ' · trên huyệt' : ''}${p.thong ? '' : ' · <span class="vk-bad">không thông</span>'}</span></div>`).join('');
-    return `<img class="vk-img" src="${cv.toDataURL('image/png')}" alt="kinh mạch"><div class="vk-note">Chấm vàng = huyệt · 丹 = đan điền · × = ô tắc. Giữ tay lên ảnh để lưu.</div>${legend}`;
+    return `<img class="vk-img" src="${cv.toDataURL('image/png')}" alt="kinh mạch"><div class="vk-note">Số ngoài lề = cột (trên) và hàng (trái). Chấm vàng = huyệt · 丹 = đan điền · × = ô tắc. Giữ tay lên ảnh để lưu.</div>${legend}`;
   }
 
   // ── Giao diện
   const css = `
-  #vk-root{position:fixed;inset:0;z-index:2147483000;background:#f3ece0;color:#1e1512;font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column}
+  #vk-root{position:fixed;top:0;bottom:0;right:0;left:auto;width:min(420px,100vw);border-left:2px solid #7a1f1a;box-shadow:-4px 0 14px #0006;z-index:2147483000;background:#f3ece0;color:#1e1512;font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column}
   #vk-root *{box-sizing:border-box}
+  #vk-root.vk-left{right:auto;left:0;border-left:0;border-right:2px solid #7a1f1a;box-shadow:4px 0 14px #0006}
+  #vk-root.vk-wide{width:min(680px,100vw)}
+  .vk-stp{margin:6px 0;padding-left:0;list-style:none;font-size:14px}.vk-stp li{padding:4px 0;border-bottom:1px dashed #e4d8bd}
   #vk-hd{display:flex;align-items:center;gap:8px;padding:10px 12px;background:#7a1f1a;color:#fff}
   #vk-hd b{font-size:17px;flex:1}
   #vk-hd button{background:#fff2;border:1px solid #fff6;color:#fff;border-radius:8px;padding:6px 10px;font-size:14px}
@@ -352,13 +358,16 @@ const TOOL_VER = '2.2.0-km';
   `;
   const style = document.createElement('style'); style.textContent = css; document.head.appendChild(style);
   const root = document.createElement('div'); root.id = 'vk-root';
-  root.innerHTML = `<div id="vk-hd"><b>Trợ lý Kinh mạch</b><button id="vk-rf">Làm mới</button><button id="vk-x">Đóng</button></div><div id="vk-body"></div>`;
+  root.innerHTML = `<div id="vk-hd"><b>Trợ lý Kinh mạch</b><button id="vk-sd" title="Đổi bên trái/phải">⇄</button><button id="vk-wd" title="Rộng/hẹp">↔</button><button id="vk-rf">Làm mới</button><button id="vk-mn" title="Thu nhỏ (giữ kết quả, game vẫn chơi được)">–</button><button id="vk-x">Đóng</button></div><div id="vk-body"></div>`;
   document.body.appendChild(root);
   const fab = document.createElement('button'); fab.id = 'vk-fab'; fab.textContent = '助'; document.body.appendChild(fab);
   const body = root.querySelector('#vk-body');
   S.show = () => { root.style.display = 'flex'; fab.style.display = 'none'; render(); };
   S.hide = () => { S.abort = true; root.style.display = 'none'; fab.style.display = 'block'; };
-  root.querySelector('#vk-x').onclick = S.hide; fab.onclick = S.show;
+  S.min = () => { root.style.display = 'none'; fab.style.display = 'block'; };
+  root.querySelector('#vk-x').onclick = S.hide; root.querySelector('#vk-mn').onclick = S.min; fab.onclick = S.show;
+  root.querySelector('#vk-sd').onclick = () => root.classList.toggle('vk-left');
+  root.querySelector('#vk-wd').onclick = () => root.classList.toggle('vk-wide');
   root.querySelector('#vk-rf').onclick = () => { S.best = null; render(); };
   const errBox = (e) => `<div class="vk-err"><b>Có lỗi:</b> ${esc(e && e.message || e)}<br><span class="vk-mu" style="font-size:12px">Tool ${TOOL_VER}${S.core ? ' · game ' + esc(S.core.bundle) : ''}. Nếu lỗi lặp lại, chụp màn hình gửi Claude.</span></div>`;
   async function render() {
@@ -473,7 +482,7 @@ const TOOL_VER = '2.2.0-km';
   function showBest(nv) {
     const { cur, best } = S.best; const out = body.querySelector('#vk-out');
     if (!out) return;
-    out.innerHTML = (best.same ? '<div class="vk-ok" style="margin:6px 0">Cách đang xếp đã tốt nhất tool tìm được.</div>' : '<div class="vk-ok" style="margin:6px 0">Xếp lại trong game theo ảnh dưới:</div>' + drawGrid(nv, best.manh)) + statRows(cur, best) +
+    out.innerHTML = (best.same ? '<div class="vk-ok" style="margin:6px 0">Cách đang xếp đã tốt nhất tool tìm được.</div>' : '<div class="vk-ok" style="margin:6px 0">Xếp lại trong game theo ảnh dưới:</div>' + drawGrid(nv, best.manh) + stepList(nv, best.manh, cur.manh)) + statRows(cur, best) +
       ((best.R && best.R.diemNghich) ? `<div class="vk-mu" style="font-size:12px;margin-top:6px">Cách này còn ${best.R.diemNghich} điểm nghịch (−${Math.min(15, 3 * best.R.diemNghich)}% tỉ lệ đột phá). Lúc chuẩn bị đột phá, chọn chế độ "Ưu tiên tu luyện / đột phá" để tool ưu tiên xóa điểm nghịch.</div>` : '') +
       '<div class="vk-mu" style="font-size:12px;margin-top:6px">Trận mẫu: 9 loại quái cùng cảnh giới với bạn, ở tiểu cảnh giới quanh mức của bạn (thấp hơn 1, bằng, cao hơn 1).</div>' + pieceTable(best.R) + sellAdvice(nv, best);
   }
@@ -490,6 +499,21 @@ const TOOL_VER = '2.2.0-km';
     const sellable = rows.filter((x) => x.why.endsWith('nên bán') || x.why.startsWith('không đặt'));
     const total = sellable.reduce((a, x) => a + x.p * x.n, 0);
     return `<div style="margin-top:10px"><b>Đồ nên bán</b> <span class="vk-mu" style="font-size:13px">(không dùng trong cách xếp tốt nhất; bán phần "nên bán" được khoảng ${Math.round(total)} linh thạch ở chỗ đang đứng)</span><table class="vk-t">${rows.map((x) => `<tr><td>${esc(x.it.ten)}${x.n > 1 ? ' ×' + x.n : ''}<br><span class="vk-mu" style="font-size:12px">phẩm ${x.it.pham_cap} · ${x.why}</span></td><td>${Math.round(x.p * x.n)}</td></tr>`).join('')}</table><div class="vk-mu" style="font-size:12px">Trước khi bán: nếu sắp lên cảnh giới mới hoặc sắp mở thêm ô kinh mạch, xếp lại một lần nữa để chắc món đó vẫn thừa.</div></div>`;
+  }
+  // Danh sách thao tác: gỡ món nào, đặt món nào ở đâu, xoay mấy lần
+  function stepList(nv, manh, curManh) {
+    const K = S.core, c = C(), nv2 = clone(nv); nv2.kinhMach.manh = manh;
+    const g = K.xo(c, nv2);
+    const same = (a, b) => a.item === b.item && a.x === b.x && a.y === b.y && a.xoay === b.xoay;
+    const keep = [], put = [];
+    manh.forEach((m, n) => {
+      const it = c.items.get(m.item), cells = K.al(g, m, it) || [];
+      const cx = Math.min(...cells.map((i) => i % g.rong)) + 1, cy = Math.min(...cells.map((i) => Math.floor(i / g.rong))) + 1;
+      const row = `<li><b>${n + 1}. ${esc(it.ten)}</b> — xoay phải ${m.xoay} lần (90° mỗi lần) — ô góc trên-trái: <b>cột ${cx}, hàng ${cy}</b></li>`;
+      ((curManh || []).some((o) => same(o, m)) ? keep : put).push(row);
+    });
+    const rm = (curManh || []).filter((o) => !manh.some((m) => same(o, m))).map((o) => `<li>${esc((c.items.get(o.item) || {}).ten || o.item)}</li>`).join('');
+    return `<div style="margin-top:8px">${rm ? `<b>1) Gỡ khỏi kinh mạch:</b><ul class="vk-stp">${rm}</ul>` : ''}<b>${rm ? '2) ' : ''}Đặt vào:</b><ul class="vk-stp">${put.join('') || '<li class="vk-mu">Không có món mới.</li>'}</ul>${keep.length ? `<b>Giữ nguyên:</b><ul class="vk-stp">${keep.join('')}</ul>` : ''}<div class="vk-note" style="text-align:left">Cột/hàng đếm từ góc trên-trái của lưới, khớp số ở lề ảnh. Số trong ảnh là số thứ tự món.</div></div>`;
   }
   function pieceTable(R) {
     if (!R || !R.manh) return '';
