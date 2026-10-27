@@ -64,6 +64,7 @@ const TOOL_VER = '2.2.0-km';
       const m = new RegExp(`function ([\\w$]+)\\(t,n\\)\\{return ${names.Tp.replace(/\$/g, '\\$')}\\(([\\w$]+)\\(t,n\\)\\)\\}`).exec(src);
       if (m) names.xo = m[1]; else missing.push('lưới kinh mạch');
     }
+    for (const [k, [a]] of Object.entries({ xI: ['ti_le_toi_da??.95', 'xác suất phép thử'] })) { const n = findFn(src, a); if (n) names[k] = n; }
     for (const [k, [re]] of Object.entries(REGEX_OPT)) { const m = re.exec(src); if (m) names[k] = m[1]; }
     if (missing.length) throw new Error('Game vừa cập nhật nên tool chưa nhận ra: ' + missing.join(', ') + '. Hãy chụp màn hình gửi Claude để sửa tool.');
     // Đường dẫn tương đối → tuyệt đối (vì bản sao chạy từ blob:)
@@ -506,6 +507,99 @@ const TOOL_VER = '2.2.0-km';
     draw();
   }
 
+
+  // ── Ô nên đổi hệ (dùng lượt "đổi màu": chỉ đổi được sang hệ thuộc linh căn)
+  function bindDoi(nv) {
+    const K = S.core, c = C();
+    body.querySelector('#vk-dm').onclick = async (ev) => {
+      ev.target.disabled = true; S.abort = false;
+      const prog = bindProgress(body.querySelector('#vk-pr6')), out = body.querySelector('#vk-dmo'), mode = body.querySelector('#vk-mode').value;
+      try {
+        const he0 = body.querySelector('#vk-dh').value, g = K.xo(c, nv), km = nv.kinhMach;
+        const used = new Set(); nv.kinhMach.manh.forEach((m) => (K.al(g, m, c.items.get(m.item)) || []).forEach((i) => used.add(i)));
+        let cells = km.trangThai.map((st, i) => i).filter((i) => km.trangThai[i] !== 'an' && km.mau[i] && km.mau[i] !== he0 && i !== g.danDien && (!g.vung || (g.vung[i] !== undefined && g.vung[i] >= 0)));
+        cells.sort((a, b) => (used.has(b) ? 1 : 0) - (used.has(a) ? 1 : 0));
+        cells = cells.slice(0, 40);
+        if (!cells.length) { out.innerHTML = '<div class="vk-mu" style="margin:6px 0">Không có ô nào đổi được sang hệ này.</div>'; prog(1, ''); ev.target.disabled = false; return; }
+        const nv0 = clone(nv); nv0.kinhMach.manh = [];
+        const base = await anneal({ nv0, mode, iters: 800, init: nv.kinhMach.manh, onProg: (f) => prog(f / (cells.length + 1), 'Mốc hiện tại…') });
+        const res = [];
+        for (let k = 0; k < cells.length && !S.abort; k++) {
+          const i = cells[k], nvO = clone(nv0); nvO.kinhMach.mau[i] = he0;
+          const r = await anneal({ nv0: nvO, mode, iters: 500, init: base.manh, onProg: (f) => prog((k + 1 + f) / (cells.length + 1), `Thử ô ${k + 1}/${cells.length}…`) });
+          res.push({ i, r, nvO, gain: r.score - base.score, from: km.mau[i] });
+        }
+        res.sort((a, b) => b.gain - a.gain);
+        body.querySelector('#vk-pr6').style.display = 'none';
+        const pos = (i) => `cột ${i % g.rong + 1}, hàng ${Math.floor(i / g.rong) + 1}`, top = res[0];
+        let html = `<table class="vk-t"><tr><th>Ô</th><th>Đổi</th><th>Lợi</th></tr>` + res.slice(0, 8).map((x) => `<tr><td>${pos(x.i)}</td><td>${heTen(x.from)} → ${heTen(he0)}</td><td>${x.gain > 1 ? '<span class="vk-ok">+' + Math.round(x.gain) + '</span>' : '<span class="vk-mu">≈0</span>'}</td></tr>`).join('') + '</table>';
+        if (top && top.gain > 1) html = `<div class="vk-ok" style="margin:6px 0">Nên đổi ô có khung xanh (${pos(top.i)}) sang ${heTen(he0)}, rồi xếp như ảnh:</div>` + drawGrid(top.nvO, top.r.manh, new Set([top.i])) + stepList(top.nvO, top.r.manh, nv.kinhMach.manh) + html;
+        else html = '<div class="vk-mu" style="margin:6px 0">Đổi một ô nào cũng chưa lợi thêm với đồ hiện có.</div>' + html;
+        out.innerHTML = html;
+      } catch (e) { console.error(e); out.innerHTML = errBox(e); }
+      ev.target.disabled = false;
+    };
+  }
+
+
+  // ── Sự kiện đang hiện: phân tích từng lựa chọn (trận đánh, phép thử, phần thưởng, rủi ro)
+  const CSN = { than_thuc: 'thần thức', ngo_tinh: 'ngộ tính', khi_van: 'khí vận', than_phap: 'thân pháp', can_cot: 'căn cốt', dao_tam: 'đạo tâm', tam_ma: 'tâm ma' };
+  const STG = ['Sơ', 'Trung', 'Hậu', 'ĐVM'];
+  const SEED = { oan_han: 'gieo mối oán hận (có thể bị trả thù sau vài chục năm)', an_nghia: 'gieo ân nghĩa (người này có thể giúp lại sau vài chục năm)' };
+  function renderEvent(nv) {
+    const box = body.querySelector('#vk-ev'); if (!box) return;
+    const K = S.core, Cc = C(), act = G().state.run.active;
+    if (!act) { box.innerHTML = '<div class="vk-card">Không có sự kiện nào đang hiện. Khi gặp sự kiện có lựa chọn, mở tab này rồi bấm <b>Làm mới</b>.</div>'; return; }
+    const def = Cc.encounters && Cc.encounters.get(act.id);
+    if (!def) { box.innerHTML = `<div class="vk-card">Không đọc được dữ liệu sự kiện <code>${esc(act.id)}</code>.</div>`; return; }
+    const vars = act.vars || {}, scene = act.scene && def.scenes && def.scenes[act.scene];
+    const choices = (scene ? scene.choices : def.choices) || [];
+    const rs = (x) => { const m = typeof x === 'string' && /^\{(\w+)\}$/.exec(x); return m ? vars[m[1]] : x; };
+    let P = null; const getP = () => P || (P = K.Vr(clone(nv), Cc));
+    const clean = (t) => String(t || '').replace(/\{[^}]*\}/g, '…').replace(/\s+/g, ' ').trim();
+    const fx = (list, flag) => (list || []).map((e) => {
+      const pre = e.if === 'won' ? '<span class="vk-mu">Nếu thắng:</span> ' : e.if === 'lost' ? '<span class="vk-mu">Nếu thua:</span> ' : e.if ? `<span class="vk-mu">Nếu ${esc(e.if)}:</span> ` : '';
+      const out = [];
+      if (e.combat !== undefined) {
+        const id = rs(e.combat), d = Cc.enemies.get(id);
+        if (!d) out.push('Chiến đấu (không rõ đối thủ)');
+        else try {
+          const E = K.Ga({ ...d }, Cc, { muc: e.muc || 'thuong' }), r = fight(getP(), E), left = Math.round(100 * (r.khiHuyetThapNhat || 0) / getP().khiHuyetToiDa);
+          const who = `<b>${esc(d.ten)}</b> <span class="vk-mu">(${REALMS[d.canh_gioi ?? 0] || '?'} ${STG[d.tieu_canh_gioi ?? 0] || ''})</span>`;
+          if (r.thang) out.push(`Đánh với ${who}: <span class="vk-ok">thắng</span> sau ${r.nHiep} hiệp, còn ${left}% khí huyết`);
+          else { flag.bad++; out.push(`Đánh với ${who}: <span class="vk-bad">thua</span> trong mô phỏng`); }
+        } catch (er) { out.push(`Chiến đấu với ${esc(d.ten)} (chưa mô phỏng được)`); }
+      }
+      if (e.stat) for (const [k, v] of Object.entries(e.stat)) { if (v < 0) flag.bad++; out.push(`${CSN[k] || k} <b class="${v < 0 ? 'vk-bad' : 'vk-ok'}">${v > 0 ? '+' : ''}${v}</b>`); }
+      if (e.linh_thach !== undefined) out.push('linh thạch ' + (typeof e.linh_thach === 'number' ? `<b>${e.linh_thach > 0 ? '+' : ''}${e.linh_thach}</b>` : `<b>${esc(JSON.stringify(e.linh_thach))}</b>`));
+      if (e.add_item !== undefined) { const it = Cc.items.get(rs(e.add_item)); out.push('nhận <b>' + esc(it ? it.ten : rs(e.add_item)) + '</b>'); }
+      if (e.injury) { flag.bad++; out.push(`<span class="vk-bad">bị thương ${e.injury} bậc</span>`); }
+      if (e.time) out.push(`mất ${e.time} năm`);
+      if (e.plant_seed) out.push(SEED[e.plant_seed.loai] || 'gieo duyên ' + esc(e.plant_seed.loai));
+      if (e.goto_scene && e.goto_scene !== 'start') { const sc = def.scenes && def.scenes[e.goto_scene]; out.push('mở tiếp: ' + esc(clean(sc && sc.text).slice(0, 70))); }
+      for (const k of ['tu_vi', 'cong_hien', 'tuoi', 'tho_nguyen', 'tam_ma']) if (e[k] !== undefined) { if (e[k] < 0) flag.bad++; out.push(`${k.replace('_', ' ')} <b>${e[k] > 0 ? '+' : ''}${esc(JSON.stringify(e[k]))}</b>`); }
+      return out.length ? `<li>${pre}${out.join('; ')}</li>` : '';
+    }).join('');
+    const prob = (chk) => { try { return S.core.xI ? S.core.xI(ctx(), chk) : null; } catch (er) { return null; } };
+    const rows = choices.map((c, i) => {
+      const flag = { bad: 0 }; let h = '';
+      if (c.effects && c.effects.length) h += `<ul class="vk-stp">${fx(c.effects, flag)}</ul>`;
+      if (c.check) {
+        const pr = prob(c.check), have = nv.chiSo[c.check.chi_so];
+        h += `<div style="margin:4px 0">Phép thử <b>${CSN[c.check.chi_so] || esc(c.check.chi_so)}</b> (bạn ${have ?? '?'}): ${pr === null ? `độ khó ${esc(c.check.do_kho)}` : `thành công khoảng <b>${Math.round(pr * 100)}%</b>`}</div>`;
+        const okFx = fx(c.success, flag), badFlag = { bad: 0 }, noFx = fx(c.failure, badFlag);
+        if (okFx) h += `<div class="vk-ok" style="font-size:13px">Nếu thành công</div><ul class="vk-stp">${okFx}</ul>`;
+        h += `<div class="vk-mu" style="font-size:13px">Nếu thất bại</div><ul class="vk-stp">${noFx || '<li class="vk-mu">Không mất gì.</li>'}</ul>`;
+        if (badFlag.bad) flag.bad++;
+        if (c.partial) h += `<div class="vk-mu" style="font-size:13px">Nếu được một nửa</div><ul class="vk-stp">${fx(c.partial, flag)}</ul>`;
+      }
+      if (!h) h = '<div class="vk-mu">Không xảy ra gì thêm.</div>';
+      const tag = flag.bad ? '<span class="vk-bad">có rủi ro</span>' : '<span class="vk-ok">không rủi ro đáng kể</span>';
+      return `<div class="vk-card"><div style="display:flex;justify-content:space-between;gap:8px"><b>${i + 1}. ${esc(c.text)}</b><span style="font-size:13px">${tag}</span></div>${h}</div>`;
+    }).join('');
+    box.innerHTML = `<div class="vk-card"><h3>${esc(def.ten || act.id)}</h3><div class="vk-mu" style="font-size:13px">${esc(clean(scene ? scene.text : def.text).slice(0, 220))}</div></div>` + (rows || '<div class="vk-card vk-mu">Sự kiện này không có lựa chọn.</div>') + '<div class="vk-mu" style="font-size:12px">Trận đánh được mô phỏng bằng bộ tính của game với chỉ số hiện tại. Một số kết quả có yếu tố ngẫu nhiên nên chỉ là dự đoán.</div>';
+  }
+
   function statRows(a, b) {
     const ch = (r) => r.P.chieu.filter((x) => x.dang !== undefined).map((x) => `${esc(x.ten)} (${Math.round(x.uy)})`).join(', ');
     const rows = [
@@ -526,7 +620,7 @@ const TOOL_VER = '2.2.0-km';
     const nv = nvNow();
     const tac = nv.kinhMach.trangThai.map((s, i) => (s === 'tac' ? i : -1)).filter((i) => i >= 0);
     const mo = (nv.kinhMach.cho && nv.kinhMach.cho.mo) || 0;
-    const KT = [['cur', 'Hiện tại'], ['opt', 'Xếp tối ưu'], ['buy', 'Nên mua'], ['cat', 'Danh mục']];
+    const KT = [['cur', 'Hiện tại'], ['opt', 'Xếp tối ưu'], ['buy', 'Nên mua'], ['cat', 'Danh mục'], ['ev', 'Sự kiện']];
     S.kt = S.kt || 'opt';
     body.innerHTML = `
     <div class="vk-card" style="margin-bottom:8px"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:14px">Mục tiêu:</b> <select class="vk-sel" id="vk-mode"><option value="bal">Cân bằng (đánh + tu luyện)</option><option value="danh">Ưu tiên đánh nhau</option><option value="tu">Ưu tiên tu luyện / đột phá</option></select></div><div class="vk-mu" style="font-size:12px;margin-top:4px">Áp dụng cho Xếp tối ưu, Nên mua và Thử món ở Danh mục.</div></div>
@@ -553,6 +647,10 @@ const TOOL_VER = '2.2.0-km';
       <div class="vk-mu" style="font-size:13px">Có ${tac.length} ô tắc · còn ${mo} lượt khai thông. Tool thử mở từng ô rồi xếp lại để xem ô nào lợi nhất.</div>
       <button class="vk-btn" id="vk-op" ${tac.length ? '' : 'disabled'}>Tìm ô nên mở</button>
       ${progressHtml('vk-pr2')}<div id="vk-out2"></div></div>
+    <div class="vk-card"><h3>Ô nên đổi hệ</h3>
+      <div class="vk-mu" style="font-size:13px">Còn <b>${(nv.kinhMach.cho && nv.kinhMach.cho.doiMau) || 0}</b> lượt đổi màu. Game chỉ cho đổi sang hệ thuộc linh căn của bạn. Tool thử đổi từng ô và xếp lại, để biết ô nào đáng đổi (kể cả khi bạn chưa có lượt, để chuẩn bị).</div>
+      <div style="margin:8px 0"><select class="vk-sel" id="vk-dh">${((nv.linhCan && nv.linhCan.he) || []).map((h) => `<option value="${h}">Đổi sang ${heTen(h)}</option>`).join('')}</select></div>
+      <button class="vk-btn" id="vk-dm">Tìm ô nên đổi</button>${progressHtml('vk-pr6')}<div id="vk-dmo"></div></div>
     </section>
     <section data-ks="buy">
     <div class="vk-card"><h3>Nên mua / tìm món nào?</h3>
@@ -562,6 +660,7 @@ const TOOL_VER = '2.2.0-km';
       <select class="vk-sel" id="vk-bn"><option value="20">Đo 20 món (nhanh)</option><option value="40" selected>Đo 40 món</option><option value="80">Đo 80 món (lâu)</option></select></div>
       <button class="vk-btn" id="vk-by">Tìm món nên mua</button>${progressHtml('vk-pr5')}<div id="vk-bo"></div></div>
     </section>
+    <section data-ks="ev"><div id="vk-ev"></div></section>
     <section data-ks="cat">
     <div class="vk-card"><h3>Danh mục món theo cảnh giới</h3>
       <div class="vk-mu" style="font-size:13px">Xem công pháp, đấu pháp, pháp khí theo từng cảnh giới, sắp theo thứ bạn cần. "Mạnh nhất" là điểm ước tính từ số liệu gốc của món, chưa tính chỗ đặt. Bấm "Thử trên kinh mạch của tôi" ở món nào để biết nó hợp kinh mạch hiện tại không (dùng chế độ ở khối "Xếp kinh mạch tối ưu").</div>
@@ -598,7 +697,8 @@ const TOOL_VER = '2.2.0-km';
       } catch (e) { console.error(e); body.querySelector('#vk-out').innerHTML = errBox(e); }
       ev.target.disabled = false;
     };
-    bindBuy(nv); bindCat(nv);
+    bindBuy(nv); bindCat(nv); bindDoi(nv);
+    try { renderEvent(nv); } catch (e) { console.error(e); body.querySelector('#vk-ev').innerHTML = errBox(e); }
     body.querySelector('#vk-op').onclick = async (ev) => {
       ev.target.disabled = true; S.abort = false;
       const prog = bindProgress(body.querySelector('#vk-pr2'));
