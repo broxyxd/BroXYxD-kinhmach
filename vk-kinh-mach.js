@@ -64,7 +64,7 @@ const TOOL_VER = '2.2.0-km';
       const m = new RegExp(`function ([\\w$]+)\\(t,n\\)\\{return ${names.Tp.replace(/\$/g, '\\$')}\\(([\\w$]+)\\(t,n\\)\\)\\}`).exec(src);
       if (m) names.xo = m[1]; else missing.push('lưới kinh mạch');
     }
-    for (const [k, [a]] of Object.entries({ xI: ['ti_le_toi_da??.95', 'xác suất phép thử'] })) { const n = findFn(src, a); if (n) names[k] = n; }
+    for (const [k, [a]] of Object.entries({ xI: ['ti_le_toi_da??.95', 'xác suất phép thử'], Nin: [/\.qua_cua\|\|\w\.treo_thuong\|\|\w\.bien_co\|\|/, 'tiện ích ở một nơi'] })) { const n = findFn(src, a); if (n) names[k] = n; }
     for (const [k, [re]] of Object.entries(REGEX_OPT)) { const m = re.exec(src); if (m) names[k] = m[1]; }
     if (missing.length) throw new Error('Game vừa cập nhật nên tool chưa nhận ra: ' + missing.join(', ') + '. Hãy chụp màn hình gửi Claude để sửa tool.');
     // Đường dẫn tương đối → tuyệt đối (vì bản sao chạy từ blob:)
@@ -548,10 +548,20 @@ const TOOL_VER = '2.2.0-km';
   const SEED = { oan_han: 'gieo mối oán hận (có thể bị trả thù sau vài chục năm)', an_nghia: 'gieo ân nghĩa (người này có thể giúp lại sau vài chục năm)' };
   function renderEvent(nv) {
     const box = body.querySelector('#vk-ev'); if (!box) return;
-    const K = S.core, Cc = C(), act = G().state.run.active;
-    if (!act) { box.innerHTML = '<div class="vk-card">Không có sự kiện nào đang hiện. Khi gặp sự kiện có lựa chọn, mở tab này rồi bấm <b>Làm mới</b>.</div>'; return; }
+    const K = S.core, Cc = C(), run0 = G().state.run;
+    // Sự kiện đang hiện; nếu chưa có thì xem các sự kiện đang chờ ở nơi bạn đứng ("Trước mắt")
+    let entries;
+    if (run0.active) entries = [run0.active];
+    else {
+      const ids = new Set((((run0.nodes || {})[run0.viTri] || {}).suKien || []));
+      try { if (K.Nin) for (const id of K.Nin(ctx(), run0.viTri) || []) ids.add(id); } catch (er) { console.warn('Nin', er); }
+      entries = [...ids].filter((id) => { const d = Cc.encounters && Cc.encounters.get(id); return d && d.choices && d.choices.length; }).map((id) => ({ id, vars: {}, pending: true }));
+    }
+    if (!entries.length) { box.innerHTML = '<div class="vk-card">Không có sự kiện nào đang hiện hoặc đang chờ ở nơi này. Khi gặp sự kiện có lựa chọn, mở tab này rồi bấm <b>Làm mới</b>.</div>'; return; }
+    box.innerHTML = entries.map((a, i) => { try { return oneEvent(a, i); } catch (er) { console.error(er); return errBox(er); } }).join('') + '<div class="vk-mu" style="font-size:12px">Trận đánh được mô phỏng bằng bộ tính của game với chỉ số hiện tại. Một số kết quả có yếu tố ngẫu nhiên nên chỉ là dự đoán.</div>';
+    function oneEvent(act, idx) {
     const def = Cc.encounters && Cc.encounters.get(act.id);
-    if (!def) { box.innerHTML = `<div class="vk-card">Không đọc được dữ liệu sự kiện <code>${esc(act.id)}</code>.</div>`; return; }
+    if (!def) return `<div class="vk-card">Không đọc được dữ liệu sự kiện <code>${esc(act.id)}</code>.</div>`;
     const vars = act.vars || {}, scene = act.scene && def.scenes && def.scenes[act.scene];
     const choices = (scene ? scene.choices : def.choices) || [];
     const rs = (x) => { const m = typeof x === 'string' && /^\{(\w+)\}$/.exec(x); return m ? vars[m[1]] : x; };
@@ -562,8 +572,16 @@ const TOOL_VER = '2.2.0-km';
       const out = [];
       if (e.combat !== undefined) {
         const id = rs(e.combat), d = Cc.enemies.get(id);
-        if (!d) out.push('Chiến đấu (không rõ đối thủ)');
-        else try {
+        const vd = typeof e.combat === 'string' && (/^\{(\w+)\}$/.exec(e.combat) || [])[1] && def.vars && def.vars[(/^\{(\w+)\}$/.exec(e.combat) || [])[1]];
+        if (!d && vd && vd.from === 'enemy') {
+          const lo = (vd.canh_gioi || [0, 0])[0], hi = (vd.canh_gioi || [0, 0])[1], cg = nv.canhGioi;
+          const cands = [...Cc.enemies.values()].filter((q) => q.canh_gioi !== undefined && q.canh_gioi >= Math.max(0, cg + lo) && q.canh_gioi <= cg + hi && (!vd.loai || q.loai === vd.loai) && (!vd.he || (q.he || []).some((h) => vd.he.includes(h))) && (!vd.ho_quai || (typeof q.ho_quai === 'string' && vd.ho_quai.includes(q.ho_quai)))).slice(0, 12);
+          let w = 0, n = 0; const names = [];
+          for (const q of cands) { try { const E = K.Ga({ ...q }, Cc, { muc: e.muc || 'thuong' }); n++; if (fight(getP(), E).thang) w++; if (names.length < 4) names.push(q.ten); } catch (er) {} }
+          if (n) { if (w < n) flag.bad++; out.push(`Đánh với đối thủ ngẫu nhiên (vd ${esc(names.join(', '))}…): bạn thắng <b class="${w === n ? 'vk-ok' : w ? '' : 'vk-bad'}">${w}/${n}</b> đối thủ có thể gặp`); }
+          else out.push('Chiến đấu (đối thủ chọn ngẫu nhiên khi bắt đầu)');
+        } else if (!d) out.push('Chiến đấu (đối thủ chưa xác định, game chọn khi sự kiện bắt đầu)');
+        else if (d) try {
           const E = K.Ga({ ...d }, Cc, { muc: e.muc || 'thuong' }), r = fight(getP(), E), left = Math.round(100 * (r.khiHuyetThapNhat || 0) / getP().khiHuyetToiDa);
           const who = `<b>${esc(d.ten)}</b> <span class="vk-mu">(${REALMS[d.canh_gioi ?? 0] || '?'} ${STG[d.tieu_canh_gioi ?? 0] || ''})</span>`;
           if (r.thang) out.push(`Đánh với ${who}: <span class="vk-ok">thắng</span> sau ${r.nHiep} hiệp, còn ${left}% khí huyết`);
@@ -597,7 +615,8 @@ const TOOL_VER = '2.2.0-km';
       const tag = flag.bad ? '<span class="vk-bad">có rủi ro</span>' : '<span class="vk-ok">không rủi ro đáng kể</span>';
       return `<div class="vk-card"><div style="display:flex;justify-content:space-between;gap:8px"><b>${i + 1}. ${esc(c.text)}</b><span style="font-size:13px">${tag}</span></div>${h}</div>`;
     }).join('');
-    box.innerHTML = `<div class="vk-card"><h3>${esc(def.ten || act.id)}</h3><div class="vk-mu" style="font-size:13px">${esc(clean(scene ? scene.text : def.text).slice(0, 220))}</div></div>` + (rows || '<div class="vk-card vk-mu">Sự kiện này không có lựa chọn.</div>') + '<div class="vk-mu" style="font-size:12px">Trận đánh được mô phỏng bằng bộ tính của game với chỉ số hiện tại. Một số kết quả có yếu tố ngẫu nhiên nên chỉ là dự đoán.</div>';
+    return `<details class="vk-card" ${idx === 0 || !act.pending ? 'open' : ''}><summary><b>${esc(def.ten || act.id)}</b> <span class="vk-mu" style="font-size:12px">${act.pending ? '(đang chờ ở đây)' : '(đang diễn ra)'}${def.tien_ich ? ' · tiện ích' : ''}${def.mat_bi ? ' · ẩn' : ''}</span></summary><div class="vk-mu" style="font-size:13px;margin:6px 0">${esc(clean(scene ? scene.text : def.text).slice(0, 220))}</div>` + (rows || '<div class="vk-mu">Sự kiện này không có lựa chọn.</div>') + '</details>';
+    }
   }
 
   function statRows(a, b) {
