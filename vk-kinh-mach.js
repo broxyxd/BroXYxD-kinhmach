@@ -113,11 +113,13 @@ const TOOL_VER = '2.2.0-km';
   // ───────────────────────── 3. Mô phỏng trận ─────────────────────────
   const BENCH_IDS = ['enemy.de_tu_truc_co', 'enemy.doc_hanh_kiem_khach', 'enemy.ma_tu_hut_mau', 'enemy.cuong_thi', 'enemy.am_tuong', 'enemy.lao_hoe_tinh', 'enemy.hoa_tinh', 'enemy.thuy_linh', 'enemy.mao_cuong'];
   function benchEnemies(cg, tcP = 0) {
+    const bk = cg + ':' + tcP; S.be = S.be || new Map(); if (S.be.has(bk)) return S.be.get(bk);
     const K = S.core, c = C();
     const tcs = [Math.max(0, tcP - 1), tcP, Math.min(3, tcP + 1)];
     let ids = BENCH_IDS.filter((id) => c.enemies.has(id));
     if (ids.length < 6) { const all = [...c.enemies.keys()].sort(); const step = Math.max(1, Math.floor(all.length / 9)); ids = all.filter((_, i) => i % step === 0).slice(0, 9); }
-    return ids.map((id, i) => ({ id, E: K.Ga({ ...c.enemies.get(id), canh_gioi: cg, tieu_canh_gioi: tcs[i % 3] }, c, { muc: 'thuong' }) }));
+    const res = ids.map((id, i) => ({ id, E: K.Ga({ ...c.enemies.get(id), canh_gioi: cg, tieu_canh_gioi: tcs[i % 3] }, c, { muc: 'thuong' }) }));
+    S.be.set(bk, res); return res;
   }
   function fight(P, E) {
     try { return S.core.eJ(clone(P), clone(E), {}); } catch { return { thang: false, nHiep: 30, khiHuyetThapNhat: 0, stTa: 0 }; }
@@ -128,7 +130,11 @@ const TOOL_VER = '2.2.0-km';
 
   // ───────────────────────── 4. Tối ưu kinh mạch ─────────────────────────
   function makeEval(nv0, enemies, mode) {
-    const K = S.core, c = C(), cache = new Map();
+    const K = S.core, c = C();
+    // Dùng chung bộ nhớ đệm giữa các lần tìm có cùng kinh mạch, nhân vật và chế độ (bỏ qua túi đồ: chỉ cách xếp mới đổi kết quả)
+    S.ec = S.ec || new Map();
+    const sig = mode + '|' + JSON.stringify({ ...nv0, tuiDo: 0, kinhMach: { ...nv0.kinhMach, manh: 0 } });
+    let cache = S.ec.get(sig); if (!cache) { cache = new Map(); S.ec.set(sig, cache); if (S.ec.size > 12) S.ec.delete(S.ec.keys().next().value); }
     return (manh) => {
       const key = manh.map((p) => p.key).sort().join('|');
       if (cache.has(key)) return cache.get(key);
@@ -166,7 +172,10 @@ const TOOL_VER = '2.2.0-km';
     const K = S.core, c = C();
     const pool = Object.keys(nv0.tuiDo).filter((id) => { const it = c.items.get(id); return it && (it.loai === 'cong_phap' || it.loai === 'phap_khi') && it.hinh && (it.canh_gioi ?? 0) <= nv0.canhGioi; });
     const g = K.xo(c, nv0), cand = {};
+    S.cm = S.cm || new Map();
+    const gsig = JSON.stringify([nv0.kinhMach.trangThai, nv0.canhGioi, nv0.tieuCanhGioi, nv0.kinhMach.huyetThem]);
     for (const id of pool) {
+      const mk = gsig + '|' + id; if (S.cm.has(mk)) { cand[id] = S.cm.get(mk); continue; }
       const it = c.items.get(id), seen = new Set(); cand[id] = [];
       for (let xoay = 0; xoay < 4; xoay++) for (let y = 0; y < g.cao; y++) for (let x = 0; x < g.rong; x++) {
         const m = { item: id, x, y, xoay };
@@ -177,6 +186,7 @@ const TOOL_VER = '2.2.0-km';
         if (seen.has(key)) continue; seen.add(key);
         cand[id].push({ m, cells, key });
       }
+      S.cm.set(mk, cand[id]); if (S.cm.size > 400) S.cm.delete(S.cm.keys().next().value);
     }
     return { cand, g };
   }
@@ -219,13 +229,13 @@ const TOOL_VER = '2.2.0-km';
     const ids = Object.keys(cand).filter((k) => cand[k].length);
     let seed = 12345; const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
     const overlaps = (manh, c, skip = -1) => { const used = new Set(); manh.forEach((p, i) => { if (i !== skip) p.cells.forEach((x) => used.add(x)); }); return c.cells.some((x) => used.has(x)); };
-    let cur = [];
+    let lastY = performance.now(), cur = [];
     if (init) for (const m of init) { const c = (cand[m.item] || []).find((c) => c.m.x === m.x && c.m.y === m.y && c.m.xoay === m.xoay); if (c && !overlaps(cur, c)) cur.push(c); }
     let curS = ev(cur).s, best = cur, bestS = curS;
     const T0 = init && init.length ? 10 : 40;
     for (let it = 0; it < iters; it++) {
       if (S.abort) break;
-      if (it % 20 === 0) { onProg && onProg(it / iters, label); await sleep0(); }
+      if (it % 8 === 0 && performance.now() - lastY > 40) { onProg && onProg(it / iters, label); await sleep0(); lastY = performance.now(); }
       const T = Math.max(0.4, T0 * (1 - it / iters));
       const next = cur.slice(); const r = rnd();
       const free = () => ids.filter((id) => !next.some((p) => p.m.item === id));
@@ -370,7 +380,7 @@ const TOOL_VER = '2.2.0-km';
   root.querySelector('#vk-x').onclick = S.hide; root.querySelector('#vk-mn').onclick = S.min; fab.onclick = S.show;
   root.querySelector('#vk-sd').onclick = () => root.classList.toggle('vk-left');
   root.querySelector('#vk-wd').onclick = () => root.classList.toggle('vk-wide');
-  root.querySelector('#vk-rf').onclick = () => { S.best = null; render(); };
+  root.querySelector('#vk-rf').onclick = () => { S.best = null; S.ec = null; S.cm = null; S.be = null; render(); };
   const errBox = (e) => `<div class="vk-err"><b>Có lỗi:</b> ${esc(e && e.message || e)}<br><span class="vk-mu" style="font-size:12px">Tool ${TOOL_VER}${S.core ? ' · game ' + esc(S.core.bundle) : ''}. Nếu lỗi lặp lại, chụp màn hình gửi Claude.</span></div>`;
   async function render() {
     try {
