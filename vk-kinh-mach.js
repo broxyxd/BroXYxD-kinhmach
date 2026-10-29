@@ -600,6 +600,15 @@ const TOOL_VER = '2.2.0-km';
         if (e.tu_vi) t += f * e.tu_vi * g.tuvi;
         if (e.cong_hien) t += f * e.cong_hien * g.ch;
         if (e.tam_ma) t += f * e.tam_ma * g.tm;
+        if (typeof e.tho_nguyen === 'number') t += f * e.tho_nguyen * (goal === 'an' ? 6 : 3);
+        if (typeof e.dao_tam === 'number') t += f * e.dao_tam * g.stat;
+        if (typeof e.khi_van === 'number') t += f * e.khi_van * g.stat;
+        if (typeof e.heal === 'number') t += f * e.heal * -g.inj * .5;
+        if (e.linh_ngo) { const it = Cc.items.get(rs(e.linh_ngo)); t += f * ((it && it.pham_cap) || 1) * g.item * .6; }
+        if (e.remove_item) { const it = Cc.items.get(rs(e.remove_item)); t -= f * ((it && it.pham_cap) || 1) * g.item * .6; }
+        if (e.tu_luyen && e.tu_luyen.nam) t += f * e.tu_luyen.nam * (e.tu_luyen.he_so || 1) * g.tuvi * 2;
+        if (e.danh_vong && typeof e.danh_vong === 'object') for (const v of Object.values(e.danh_vong)) if (typeof v === 'number') t += f * v * .5;
+        if (e.npc_relation && typeof e.npc_relation.gia_tri === 'number') t += f * e.npc_relation.gia_tri * .3;
       } return t; };
     const fx = (list, flag) => (list || []).map((e) => {
       const pre = e.if === 'won' ? '<span class="vk-mu">Nếu thắng:</span> ' : e.if === 'lost' ? '<span class="vk-mu">Nếu thua:</span> ' : e.if ? `<span class="vk-mu">Nếu ${esc(e.if)}:</span> ` : '';
@@ -631,6 +640,28 @@ const TOOL_VER = '2.2.0-km';
       if (e.plant_seed) out.push(SEED[e.plant_seed.loai] || 'gieo duyên ' + esc(e.plant_seed.loai));
       if (e.goto_scene && e.goto_scene !== 'start') { const sc = def.scenes && def.scenes[e.goto_scene]; out.push('mở tiếp: ' + esc(clean(sc && sc.text).slice(0, 70))); }
       for (const k of ['tu_vi', 'cong_hien', 'tuoi', 'tho_nguyen', 'tam_ma']) if (e[k] !== undefined) { if (e[k] < 0) flag.bad++; out.push(`${k.replace('_', ' ')} <b>${e[k] > 0 ? '+' : ''}${esc(JSON.stringify(e[k]))}</b>`); }
+      const sg = (v) => (v > 0 ? '+' : '') + v, cl = (v) => (v < 0 ? 'vk-bad' : 'vk-ok'), nm = (id) => { const r = rs(id); return typeof r === 'string' && !/^\{/.test(r) ? ((Cc.items.get(r) || Cc.npc && Cc.npc.get && Cc.npc.get(r) || {}).ten || r) : '…'; };
+      if (typeof e.dao_tam === 'number') { if (e.dao_tam < 0) flag.bad++; out.push(`đạo tâm <b class="${cl(e.dao_tam)}">${sg(e.dao_tam)}</b>`); }
+      if (typeof e.khi_van === 'number') { if (e.khi_van < 0) flag.bad++; out.push(`khí vận <b class="${cl(e.khi_van)}">${sg(e.khi_van)}</b>`); }
+      if (e.heal) out.push(`<span class="vk-ok">hồi ${esc(e.heal)} bậc thương thế</span>`);
+      if (e.tu_luyen) out.push(`tu luyện ${esc(e.tu_luyen.nam)} năm${e.tu_luyen.he_so ? ' (hiệu suất ×' + esc(e.tu_luyen.he_so) + ')' : ''}`);
+      if (e.linh_ngo) out.push(`được lĩnh ngộ <b>${esc(nm(e.linh_ngo))}</b>`);
+      if (e.remove_item) { flag.bad++; out.push(`<span class="vk-bad">mất ${esc(nm(e.remove_item))}</span>`); }
+      if (e.mua) out.push(`được mua <b>${esc(nm(e.mua))}</b>`);
+      if (e.doi) out.push(`đổi <b>${esc(nm(e.doi.id))}</b>${e.doi.gia !== undefined ? ' giá ' + esc(JSON.stringify(e.doi.gia)) : ''}`);
+      if (e.ban && e.ban.id) out.push(`bán ${esc(nm(e.ban.id))}${e.ban.so ? ' (' + esc(e.ban.so) + ')' : ''}`);
+      if (e.npc_relation && typeof e.npc_relation === 'object') { const v = e.npc_relation.gia_tri; if (v < 0) flag.bad++; out.push(`quan hệ với ${esc(nm(e.npc_relation.npc))} <b class="${cl(v)}">${sg(v)}</b>`); }
+      if (e.danh_vong !== undefined) out.push('danh vọng ' + esc(JSON.stringify(e.danh_vong)));
+      if (e.phuc_phan) out.push(`<span class="vk-mu">để lại hậu quả về sau (${esc(e.phuc_phan.nhom || '')}, trong ${esc(e.phuc_phan.cua_so_nam || '?')} năm)</span>`);
+      if (e.uu_the) out.push(`ưu thế khi giao chiến: ${e.uu_the === 'ta' ? 'bên bạn' : esc(e.uu_the)}`);
+      if (e.the_gioi) out.push('thế cục: ' + esc(JSON.stringify(e.the_gioi)));
+      if (e.be_quan) out.push('vào bế quan');
+      if (e.gia_nhap_mon_phai) out.push('gia nhập môn phái');
+      if (e.vuot_bien) out.push('vượt biển');
+      if (e.luyen_thu) out.push('luyện thú');
+      if (e.npc_giet || e.npc_truc_xuat) { flag.bad++; out.push('<span class="vk-bad">có NPC bị giết / trục xuất</span>'); }
+      if (e.advance_chain || e.start_chain) out.push('mở tiếp chuỗi sự kiện');
+      if (e.fail_chain) out.push('chuỗi sự kiện thất bại');
       return out.length ? `<li>${pre}${out.join('; ')}</li>` : '';
     }).join('');
     const prob = (chk) => { try { return S.core.xI ? S.core.xI(ctx(), chk) : null; } catch (er) { return null; } };
