@@ -47,7 +47,7 @@
       const r = await fetch(u); if (!r.ok) { out.errors.push(name + ' → ' + r.status); continue; }
       const txt = await r.text();
       if (/\.json$/.test(u)) { try { out.files[name] = JSON.parse(txt); ok++; } catch { out.files[name] = txt; ok++; } }
-      else out.files[name] = { _js: true, bytes: txt.length, head: txt.slice(0, 200) }; // js: chỉ ghi tên và kích thước (hash tên file cho biết bản mới)
+      else out.files[name] = /\/index-[\w-]+\.js$/.test(u) ? { _js: true, bytes: txt.length, text: txt } : { _js: true, bytes: txt.length, head: txt.slice(0, 200) }; // js: chỉ ghi tên và kích thước (hash tên file cho biết bản mới)
     } catch (e) { out.errors.push(name + ': ' + e.message); }
   }
   log('✔ tải được ' + ok + ' file JSON' + (out.errors.length ? ' · lỗi ' + out.errors.length : ''));
