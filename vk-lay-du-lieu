@@ -1,10 +1,11 @@
 // Vạn Kiếp Tu Tiên - Lấy dữ liệu game (chỉ đọc, không sửa game, không gửi đi đâu)
 // Gom: content (từ game), các file /data/*.json, danh sách file JS/JSON của game, phiên bản. Xuất ra 1 file vk-data.json.
-(async () => {
+(async () => { try {
+  alert('Tool lấy dữ liệu đã chạy. Bấm OK rồi chờ vài giây, hộp thông báo sẽ hiện ở đầu màn hình.');
   const old = document.getElementById('vk-dl'); if (old) old.remove();
   const box = document.createElement('div'); box.id = 'vk-dl';
-  box.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:2147483647;background:#1b1d22;color:#eee;font:14px/1.5 system-ui,sans-serif;padding:10px 12px;border-radius:10px;border:1px solid #556;max-height:45vh;overflow:auto';
-  document.body.appendChild(box);
+  box.style.cssText = 'position:fixed;left:8px;right:8px;top:8px;z-index:2147483647;background:#1b1d22;color:#eee;font:14px/1.5 system-ui,sans-serif;padding:10px 12px;border-radius:10px;border:1px solid #556;max-height:45vh;overflow:auto';
+  (document.body || document.documentElement).appendChild(box);
   const log = (t) => { box.innerHTML += '<div>' + t + '</div>'; box.scrollTop = 1e9; };
   box.innerHTML = '<b>Lấy dữ liệu game</b>';
   const out = { _meta: { url: location.href, time: new Date().toISOString(), ua: navigator.userAgent }, files: {}, errors: [] };
@@ -57,4 +58,4 @@
   a.style.cssText = 'display:inline-block;margin-top:6px;padding:8px 12px;background:#2e7d32;color:#fff;border-radius:8px;text-decoration:none';
   box.appendChild(a); const x = document.createElement('span'); x.textContent = '  ✕ đóng'; x.style.cssText = 'cursor:pointer;margin-left:12px'; x.onclick = () => box.remove(); box.appendChild(x);
   a.click();
-})();
+} catch (e) { alert('Lỗi tool: ' + (e && e.message || e)); } })();
