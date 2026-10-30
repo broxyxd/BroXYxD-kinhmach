@@ -20,6 +20,8 @@ const TOOL_VER = '2.2.0-km';
     fn: [/class ([\w$]+)\{constructor\(\w\)\{this\.state=\w\}static fromSeed/, 'bộ số ngẫu nhiên'],
   };
   const REGEX_OPT = {
+    At: [/function ([\w$]+)\(\w,\w\)\{if\(!\w\)return!0;for\(const\[\w,\w\]of Object\.entries\(\w\)\)\{const \w=[\w$]+\.get\(\w\);if\(!\w\)throw new Error\(`Điều kiện lạ/, 'kiểm tra điều kiện'],
+    Om: [/function ([\w$]+)\(\w,\w\)\{if\(!\w\)return"";const \w=\[\];for\(const\[\w,\w\]of Object\.entries\(\w\)\)\{const \w=[\w$]+\.get\(\w\);!\w\|\|/, 'giải thích điều kiện'],
     IP: [/function ([\w$]+)\(\w,\w,\w,\w=0\)\{return [\w$]+\(\w,\w,\w,\w,[\w$]+\(\w,\w,"sell",\w\)\)\}/, 'giá bán'],
   };
 
@@ -665,8 +667,13 @@ const TOOL_VER = '2.2.0-km';
       return out.length ? `<li>${pre}${out.join('; ')}</li>` : '';
     }).join('');
     const prob = (chk) => { try { return S.core.xI ? S.core.xI(ctx(), chk) : null; } catch (er) { return null; } };
+    const cx = (() => { try { const x = ctx(); if (!x.enc) x.enc = { id: act.id, slot: run0.viTri, vars: act.vars || {} }; return x; } catch (er) { return null; } })();
+    const unmetOf = (c) => { try { if (!cx) return null; if (c.hien_khi && K.At && !K.At(c.hien_khi, cx)) return 'ẩn với bạn lúc này'; if (c.requires && K.Om) return K.Om(c.requires, cx) || ''; return ''; } catch (er) { return null; } };
     const rows = choices.map((c, i) => {
       const flag = { bad: 0 }; let h = '';
+      const unmet = unmetOf(c);
+      if (unmet) h += `<div class="vk-bad" style="margin:4px 0">Chưa dùng được: ${esc(unmet)}</div>`;
+      else if (unmet === '' && c.requires) h += `<div class="vk-ok" style="margin:4px 0;font-size:13px">Đủ điều kiện chọn</div>`;
       if (c.effects && c.effects.length) h += `<ul class="vk-stp">${fx(c.effects, flag)}</ul>`;
       if (c.check) {
         const pr = prob(c.check), have = nv.chiSo[c.check.chi_so];
@@ -681,11 +688,17 @@ const TOOL_VER = '2.2.0-km';
       const tag = flag.bad ? '<span class="vk-bad">có rủi ro</span>' : '<span class="vk-ok">không rủi ro đáng kể</span>';
       let evs = score(c.effects);
       if (c.check) { const pr0 = prob(c.check), p = pr0 === null ? .5 : pr0, pp = c.partial ? (1 - p) * .35 * Math.min(1, 2 * p) : 0; evs += p * score(c.success) + pp * score(c.partial) + (1 - p - pp) * score(c.failure); }
-      return { i, c, h, tag, evs };
+      let pTxt = ''; if (c.check) { const pq = prob(c.check); pTxt = pq === null ? '' : Math.round(pq * 100) + '%'; }
+      return { i, c, h, tag, evs, unmet: !!unmet, bad: flag.bad, pTxt };
     });
-    const bestEv = Math.max(...rows.map((x) => x.evs)), nBest = rows.filter((x) => bestEv - x.evs < 2).length;
-    const rowsH = rows.map((x) => { const star = x.evs === bestEv && nBest === 1 ? '<span class="vk-ok">★ Gợi ý</span> ' : (bestEv - x.evs < 2 && nBest > 1 ? '<span class="vk-mu">≈ ngang nhau</span> ' : ''); return `<div class="vk-card"${star.includes('Gợi ý') ? ' style="border-color:#1a7f37;border-width:2px"' : ''}><div style="display:flex;justify-content:space-between;gap:8px"><b>${x.i + 1}. ${esc(x.c.text)}</b><span style="font-size:13px">${x.tag}</span></div><div style="font-size:12px;margin:2px 0">${star}<span class="vk-mu">điểm ${Math.round(x.evs)}</span></div>${x.h}</div>`; }).join('');
-    return `<details class="vk-card" ${idx === 0 || !act.pending ? 'open' : ''}><summary><b>${esc(def.ten || act.id)}</b> <span class="vk-mu" style="font-size:12px">${act.pending ? '(đang chờ ở đây)' : '(đang diễn ra)'}${def.tien_ich ? ' · tiện ích' : ''}${def.mat_bi ? ' · ẩn' : ''}</span></summary><div class="vk-mu" style="font-size:13px;margin:6px 0">${esc(clean(scene ? scene.text : def.text).slice(0, 220))}</div>` + (rowsH || '<div class="vk-mu">Sự kiện này không có lựa chọn.</div>') + '</details>';
+    const okRows = rows.filter((x) => !x.unmet), pool = okRows.length ? okRows : rows;
+    const bestEv = Math.max(...pool.map((x) => x.evs)), nBest = pool.filter((x) => bestEv - x.evs < 2).length;
+    const second = [...pool].sort((a, b) => b.evs - a.evs)[1];
+    const bestRow = pool.find((x) => x.evs === bestEv);
+    const worst = pool.filter((x) => x.bad && x !== bestRow && x.evs < bestEv - 20);
+    const verdict = rows.length > 1 ? `<div class="vk-card" style="border-color:#1a7f37;margin:6px 0"><b>Kết luận:</b> ${nBest === 1 ? `nên chọn <b>${bestRow.i + 1}. ${esc(bestRow.c.text)}</b>${bestRow.pTxt ? ` (thành công khoảng ${bestRow.pTxt})` : ''}${second ? `, hơn lựa chọn kế tiếp ${Math.round(bestEv - second.evs)} điểm` : ''}${bestRow.bad ? ', nhưng <span class="vk-bad">vẫn có rủi ro</span>' : ', không có rủi ro đáng kể'}.` : `có ${nBest} lựa chọn ngang nhau (${pool.filter((x) => bestEv - x.evs < 2).map((x) => x.i + 1).join(', ')}); chọn theo sở thích.`}${worst.length ? ` Nên tránh: ${worst.map((x) => x.i + 1).join(', ')} (rủi ro cao, điểm thấp).` : ''}${okRows.length < rows.length ? ` Có ${rows.length - okRows.length} lựa chọn bạn chưa dùng được (đã loại khỏi gợi ý).` : ''}</div>` : '';
+    const rowsH = rows.map((x) => { const star = x.unmet ? '<span class="vk-bad">không chọn được</span> ' : x.evs === bestEv && nBest === 1 ? '<span class="vk-ok">★ Gợi ý</span> ' : (bestEv - x.evs < 2 && nBest > 1 && !x.unmet ? '<span class="vk-mu">≈ ngang nhau</span> ' : ''); return `<div class="vk-card"${star.includes('Gợi ý') ? ' style="border-color:#1a7f37;border-width:2px"' : ''}><div style="display:flex;justify-content:space-between;gap:8px"><b>${x.i + 1}. ${esc(x.c.text)}</b><span style="font-size:13px">${x.tag}</span></div><div style="font-size:12px;margin:2px 0">${star}<span class="vk-mu">điểm ${Math.round(x.evs)}</span></div>${x.h}</div>`; }).join('');
+    return `<details class="vk-card" ${idx === 0 || !act.pending ? 'open' : ''}><summary><b>${esc(def.ten || act.id)}</b> <span class="vk-mu" style="font-size:12px">${act.pending ? '(đang chờ ở đây)' : '(đang diễn ra)'}${def.tien_ich ? ' · tiện ích' : ''}${def.mat_bi ? ' · ẩn' : ''}</span></summary><div class="vk-mu" style="font-size:13px;margin:6px 0">${esc(clean(scene ? scene.text : def.text).slice(0, 220))}</div>` + verdict + (rowsH || '<div class="vk-mu">Sự kiện này không có lựa chọn.</div>') + '</details>';
     }
   }
 
