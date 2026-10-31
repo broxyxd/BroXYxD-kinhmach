@@ -9,7 +9,7 @@ const TOOL_VER = '2.2.0-km';
 
   const ANCHORS = {
     eJ:  [/\.doDung\)!=null&&/, 'mô phỏng trận'],
-    Vr:  ['drugResistTran:{}', 'chỉ số nhân vật khi đánh'],
+    Vr:  [/return\{ten:\w\.ten,drugResistTran:\{\},drugRetention:/, 'chỉ số nhân vật khi đánh'],
     Ga:  [/muc\?\?"thuong",\w=\w\.canh_gioi/, 'dựng quái'],
     Rt:  [/\.kinhMach,\w=new Set\(\w\.huyetThem\)|=\w\.kinhMach,\w=`\$\{\w\.theChat\}\|\$\{\w\.canhGioi\}/, 'tính kinh mạch'],
     Tp:  ['.khuon.split(', 'khuôn kinh mạch'],
