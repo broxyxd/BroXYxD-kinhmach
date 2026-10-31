@@ -702,6 +702,38 @@ const TOOL_VER = '2.2.0-km';
     }
   }
 
+  // ───────────────────────── Lịch mở bí cảnh (tính đúng công thức của game từ seed kiếp này) ─────────────────────────
+  function renderBiCanh() {
+    const box = body.querySelector('#vk-bc'); if (!box) return;
+    const K = S.core, Cc = C(), g = G(), run = g.state.run, world = g.env && g.env.world;
+    const cfg = Cc.noiChon && Cc.noiChon.get && (Cc.noiChon.get('noi.bi_canh') || {}).khai_mo;
+    if (!world || !world.slots || !cfg || !K.fn) { box.innerHTML = '<div class="vk-card">Chưa đọc được dữ liệu thế giới của game để tính lịch bí cảnh.</div>'; return; }
+    const Y = S.bcY || 10, F = K.fn, nam = run.nam, nvv = run.nhanVat;
+    const fM = (x) => F.fromSeed(x).next(), Ux = (x, r) => r[0] + Math.floor(fM(x) * (r[1] - r[0] + 1));
+    const eff = nvv.canhGioi + (nvv.tieuCanhGioi || 0) / 4;
+    const lvl = (cn) => { const d = cn - eff; return d <= -0.5 ? ['An toàn', 'vk-ok'] : d <= 0.5 ? ['Ngang sức', ''] : d <= 1.5 ? ['Nguy hiểm', 'vk-bad'] : ['Tử địa', 'vk-bad']; };
+    const list = [];
+    for (const sl of world.slots) {
+      let info; try { info = world.info(sl.id); } catch (er) { continue; }
+      if (!info || !info.diaDanh || info.diaDanh.loai !== 'bi_canh') continue;
+      const st = (run.noiChon || {})[sl.id];
+      if (st && st.biDiet !== undefined) continue;
+      const a = `${run.seed}|khai_mo|${sl.id}`, period = Ux(a + '|chu_ky', cfg.chu_ky_nam), dur = Math.min(Ux(a + '|mo', cfg.mo_nam), period - 1), phase = Math.floor(fM(a + '|pha') * period);
+      let dist = null; try { if (world.distance) dist = world.distance(run.viTri, sl.id); } catch (er) {}
+      for (let d = Math.floor((nam - phase) / period) - 1; d <= Math.ceil((nam + Y - phase) / period) + 1; d++) {
+        const start = phase + d * period, end = start + dur;
+        if (end > nam && start <= nam + Y) list.push({ ten: info.ten, cn: info.capNen, start, end, dur, period, d, dist, entered: !!(st && st.enteredCycle === d), now: start <= nam });
+      }
+    }
+    list.sort((x, y) => x.start - y.start || (x.dist ?? 0) - (y.dist ?? 0));
+    const sel = `<select class="vk-sel" id="vk-bcy">${[5, 10, 20, 50].map((v) => `<option value="${v}" ${v === Y ? 'selected' : ''}>${v} năm tới</option>`).join('')}</select>`;
+    const rows = list.map((x) => { const [lv, cl] = lvl(x.cn); const when = x.now ? `<b class="vk-ok">ĐANG MỞ</b>, còn ${Math.max(1, Math.ceil(x.end - nam))} năm` : `sau <b>${Math.max(0, Math.ceil(x.start - nam))}</b> năm <span class="vk-mu">(năm ${Math.floor(x.start)})</span>`; return `<tr><td><b>${esc(x.ten)}</b>${x.entered ? '<br><span class="vk-mu" style="font-size:12px">đã vào kỳ này</span>' : ''}</td><td>${when}</td><td>${x.dur} năm</td><td>${num(x.cn, 1)}<br><span class="${cl}" style="font-size:12px">${lv}</span></td><td>${x.dist === null ? '–' : Math.round(x.dist)}</td></tr>`; }).join('');
+    box.innerHTML = `<div class="vk-card"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>Bí cảnh sắp mở:</b> ${sel} <span class="vk-mu" style="font-size:12px">năm hiện tại ${Math.floor(nam)}</span></div>
+    ${rows ? `<div style="overflow-x:auto"><table class="vk-t" style="margin-top:8px"><tr><th>Bí cảnh</th><th>Mở</th><th>Kéo dài</th><th>Cấp nền</th><th>Xa</th></tr>${rows}</table></div>` : '<div class="vk-mu" style="margin-top:8px">Không có bí cảnh nào mở trong khoảng này.</div>'}
+    <div class="vk-note" style="text-align:left;margin-top:8px">Lịch tính đúng công thức của game từ seed kiếp này (chu kỳ ${cfg.chu_ky_nam[0]}–${cfg.chu_ky_nam[1]} năm, mở ${cfg.mo_nam[0]}–${cfg.mo_nam[1]} năm; mỗi bí cảnh mỗi kỳ vào được một lần). “Cấp nền” so với cảnh giới của bạn cho biết mức nguy hiểm của vùng. Cảnh giới được phép vào còn tùy sự kiện bí cảnh game bốc khi bạn tới nơi, nên có thể bị cấm chế từ chối. “Xa” là khoảng cách trên bản đồ, chưa phải số năm đi đường. Bí cảnh đã bị diệt hoặc bị ẩn có thể không hiện.</div></div>`;
+    const ss = box.querySelector('#vk-bcy'); if (ss) ss.onchange = () => { S.bcY = +ss.value; renderBiCanh(); };
+  }
+
   function statRows(a, b) {
     const ch = (r) => r.P.chieu.filter((x) => x.dang !== undefined).map((x) => `${esc(x.ten)} (${Math.round(x.uy)})`).join(', ');
     const rows = [
@@ -722,7 +754,7 @@ const TOOL_VER = '2.2.0-km';
     const nv = nvNow(), c0 = C();
     const tac = nv.kinhMach.trangThai.map((s, i) => (s === 'tac' ? i : -1)).filter((i) => i >= 0);
     const mo = (nv.kinhMach.cho && nv.kinhMach.cho.mo) || 0;
-    const KT = [['cur', 'Hiện tại'], ['opt', 'Xếp tối ưu'], ['buy', 'Nên mua'], ['cat', 'Danh mục'], ['ev', 'Sự kiện']];
+    const KT = [['cur', 'Hiện tại'], ['opt', 'Xếp tối ưu'], ['buy', 'Nên mua'], ['cat', 'Danh mục'], ['ev', 'Sự kiện'], ['bc', 'Bí cảnh']];
     S.kt = S.kt || 'opt';
     body.innerHTML = `
     <div class="vk-card" style="margin-bottom:8px"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:14px">Mục tiêu:</b> <select class="vk-sel" id="vk-mode"><option value="bal">Cân bằng (đánh + tu luyện)</option><option value="danh">Ưu tiên đánh nhau</option><option value="tu">Ưu tiên tu luyện / đột phá</option></select></div><label style="display:flex;gap:6px;align-items:center;margin-top:6px;font-size:13px"><input type="checkbox" id="vk-lt" ${S.lt ? 'checked' : ''}> Tính khi đã lĩnh ngộ xong (xếp lâu dài)</label><div class="vk-mu" style="font-size:12px;margin-top:4px">Áp dụng cho Xếp tối ưu, Nên mua và Thử món ở Danh mục. Bỏ tick = tính theo sức hiện tại (món mới chỉ 50%).</div></div>
@@ -763,6 +795,7 @@ const TOOL_VER = '2.2.0-km';
       <button class="vk-btn" id="vk-by">Tìm món nên mua</button>${progressHtml('vk-pr5')}<div id="vk-bo"></div></div>
     </section>
     <section data-ks="ev"><div id="vk-ev"></div></section>
+    <section data-ks="bc"><div id="vk-bc"></div></section>
     <section data-ks="cat">
     <div class="vk-card"><h3>Danh mục món theo cảnh giới</h3>
       <div class="vk-mu" style="font-size:13px">Xem công pháp, đấu pháp, pháp khí theo từng cảnh giới, sắp theo thứ bạn cần. "Mạnh nhất" là điểm ước tính từ số liệu gốc của món, chưa tính chỗ đặt. Bấm "Thử trên kinh mạch của tôi" ở món nào để biết nó hợp kinh mạch hiện tại không (dùng chế độ ở khối "Xếp kinh mạch tối ưu").</div>
@@ -803,6 +836,7 @@ const TOOL_VER = '2.2.0-km';
     body.querySelector('#vk-lt').addEventListener('change', (e) => { S.lt = e.target.checked; S.ec = null; S.best = null; render(); });
     bindBuy(nv); bindCat(nv); bindDoi(nv);
     try { renderEvent(nv); } catch (e) { console.error(e); body.querySelector('#vk-ev').innerHTML = errBox(e); }
+    try { renderBiCanh(); } catch (e) { console.error(e); body.querySelector('#vk-bc').innerHTML = errBox(e); }
     body.querySelector('#vk-op').onclick = async (ev) => {
       ev.target.disabled = true; S.abort = false;
       const prog = bindProgress(body.querySelector('#vk-pr2'));
