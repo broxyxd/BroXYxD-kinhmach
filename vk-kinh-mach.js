@@ -765,7 +765,7 @@ const TOOL_VER = '2.2.0-km';
       <li><b>Thông:</b> tâm pháp/đấu pháp thông khi chạm đan điền hoặc chạm một công pháp đã thông (nối thành chuỗi). Pháp khí thông khi chạm đan điền hoặc chạm công pháp đã thông. Món không thông = không có tác dụng.</li>
       <li><b>Màu ô:</b> hệ số = 0,85 + 0,45 × độ hợp trung bình các ô (đúng hệ = 1; cùng gốc như Băng–Thủy hoặc có Vô sắc = 0,5; khác hệ = 0). Đặt đúng màu tối đa ×1,3.</li>
       <li><b>Huyệt:</b> phủ 1 huyệt ×2, mỗi huyệt thêm +0,25. Nên đặt món mạnh nhất (chiêu chính, pháp khí thủ) lên huyệt.</li>
-      <li><b>Sinh khắc:</b> mỗi món kề bên (đã thông) mà hệ của nó sinh ra hệ món này +15%, mỗi món khắc −15% (thấp nhất ×0,4).</li>
+      <li><b>Sinh khắc:</b> mỗi món kề bên (đã thông) mà hệ của nó sinh ra hệ món này +15%, mỗi món khắc −15% (thấp nhất ×0,4). <b>Bản mới:</b> món sinh kém phẩm thì góp ít hơn: kém 1 phẩm +10%, kém 2 phẩm +5%, kém từ 3 phẩm không góp. Nên đặt món sinh có phẩm bằng hoặc cao hơn.</li>
       <li><b>Kinh lộ (pháp khí):</b> chuỗi công pháp từ đan điền tới pháp khí, mỗi công pháp cùng họ hệ +10% (tối đa 5).</li>
       <li><b>Nội tại:</b> món nhiều hệ mà các hệ sinh nhau ×1,1.</li>
       <li><b>Điểm nghịch</b> (+1 mỗi cặp món kề nhau khắc nhau, +1 mỗi món đặt quá nửa trên ô khắc nó, +1 mỗi món tự có hệ khắc nhau): mỗi điểm −3% tỉ lệ đột phá (tối đa −15%) và gây phản phệ trong trận. Tool trừ điểm nghịch khi xếp.</li>
