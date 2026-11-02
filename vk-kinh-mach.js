@@ -777,6 +777,9 @@ const TOOL_VER = '2.2.0-km';
       <div style="margin:8px 0"><select class="vk-sel" id="vk-it"><option value="1500">Nhanh</option><option value="3000" selected>Vừa</option><option value="6000">Kỹ (lâu)</option></select></div>
       <button class="vk-btn" id="vk-go">Bắt đầu xếp</button>
       ${progressHtml('vk-pr')}<div id="vk-out"></div></div>
+    <div class="vk-card"><h3>Hai bộ kinh mạch: bế quan và đánh</h3>
+      <div class="vk-mu" style="font-size:13px">Game cho lưu tới 3 bộ kinh mạch và đổi bộ miễn phí (mở bộ 2 tốn 1.000 linh thạch, bộ 3 tốn 15.000). Bạn đang có <b>${(nv.kinhMach.loadouts || []).length || 1}</b> bộ. Nên lưu 1 bộ <b>Tu luyện</b> (dùng khi bế quan, đột phá) và 1 bộ <b>Đánh</b> (dùng khi đi đánh). Tool xếp sẵn cả hai và có thể tự xếp hộ.</div>
+      <button class="vk-btn" id="vk-2b">Xếp 2 bộ</button>${progressHtml('vk-pr2b')}<div id="vk-2o"></div></div>
     <div class="vk-card"><h3>Ô kinh mạch nên mở</h3>
       <div class="vk-mu" style="font-size:13px">Có ${tac.length} ô tắc · còn ${mo} lượt khai thông. Tool thử mở từng ô rồi xếp lại để xem ô nào lợi nhất.</div>
       <button class="vk-btn" id="vk-op" ${tac.length ? '' : 'disabled'}>Tìm ô nên mở</button>
@@ -837,6 +840,21 @@ const TOOL_VER = '2.2.0-km';
     bindBuy(nv); bindCat(nv); bindDoi(nv);
     try { renderEvent(nv); } catch (e) { console.error(e); body.querySelector('#vk-ev').innerHTML = errBox(e); }
     try { renderBiCanh(); } catch (e) { console.error(e); body.querySelector('#vk-bc').innerHTML = errBox(e); }
+    body.querySelector('#vk-2b').onclick = async (ev) => {
+      ev.target.disabled = true; S.abort = false;
+      const prog = bindProgress(body.querySelector('#vk-pr2b'));
+      try {
+        const res = {};
+        for (const [k, mode, f0, f1] of [['tu', 'tu', 0, 0.5], ['danh', 'danh', 0.5, 1]]) res[k] = await optimizeMode(nv, mode, 2400, prog, f0, f1, mode === 'tu' ? 'Bộ tu luyện…' : 'Bộ đánh…');
+        body.querySelector('#vk-pr2b').style.display = 'none';
+        const box = (title, r, note, k) => `<div style="margin-top:12px"><b>${title}</b> <span class="vk-mu" style="font-size:13px">${note}</span>${applyBtn('vk-ap' + k, 'Tự xếp vào ' + title.split(' · ')[0])}
+          <div style="font-size:14px;margin:4px 0">Thắng ${r.wins}/${r.n} trận mẫu · tu luyện +${pct(r.R.biDong.toc_do || 0)} · đột phá +${pct(r.R.biDong.dot_pha || 0, 1)} · điểm nghịch ${r.R.diemNghich || 0}</div>${drawGrid(nv, r.manh)}</div>`;
+        body.querySelector('#vk-2o').innerHTML = box('Bộ 1 · Tu luyện', res.tu, 'dùng khi bế quan, đột phá', 0) + box('Bộ 2 · Đánh', res.danh, 'dùng khi ra ngoài đánh', 1)
+          + `<div class="vk-mu" style="font-size:12px;margin-top:6px">Nút "Tự xếp" tự đổi sang bộ đó (game cần 1 chỗ trống trong túi để cất đồ bộ cũ) rồi xếp hộ. Bộ chưa mở thì phải mở trong game trước.</div>`;
+        bindApply('vk-ap0', () => res.tu.manh, 0); bindApply('vk-ap1', () => res.danh.manh, 1);
+      } catch (e) { console.error(e); body.querySelector('#vk-2o').innerHTML = errBox(e); }
+      ev.target.disabled = false;
+    };
     body.querySelector('#vk-op').onclick = async (ev) => {
       ev.target.disabled = true; S.abort = false;
       const prog = bindProgress(body.querySelector('#vk-pr2'));
@@ -866,12 +884,88 @@ const TOOL_VER = '2.2.0-km';
       ev.target.disabled = false;
     };
   }
+  async function optimizeMode(nv, mode, iters, prog, f0, f1, label) {
+    const nv0 = clone(nv); nv0.kinhMach.manh = [];
+    const P = (a, b) => (f) => prog(f0 + (f1 - f0) * (a + (b - a) * f), label);
+    P(0, 0)(0); const g0 = await greedy(nv0, mode);
+    const a = await anneal({ nv0, mode, iters: Math.round(iters * 0.6), init: g0, onProg: P(0.05, 0.55) });
+    const b = await anneal({ nv0, mode, iters: Math.round(iters * 0.5), init: a.manh, onProg: P(0.55, 1) });
+    return stripDead(nv, [a, b].sort((x, y) => y.score - x.score)[0], mode);
+  }
+  // Tự xếp vào game bằng chính các thao tác của game (tháo / dời / đặt mảnh), có kiểm tra từng bước.
+  function applyLayout(target, loadout) {
+    const g = G();
+    if (!g.state.run || g.state.run.ketThuc) return { ok: false, msg: 'Chưa có kiếp đang chơi.' };
+    const km = () => g.state.run.nhanVat.kinhMach;
+    const step = (fn) => { const before = JSON.stringify(km().manh); try { fn(); } catch (e) { return String(e && e.message || e); } if (g.state.error) return g.state.error; return JSON.stringify(km().manh) === before ? 'game không nhận thao tác' : null; };
+    if (loadout !== undefined) {
+      const nLo = (km().loadouts || []).length || 1;
+      if (loadout >= nLo) return { ok: false, msg: `Chưa mở Bộ ${loadout + 1}. Mở thêm bộ trong màn Kinh mạch của game trước (bộ 2 tốn 1.000 linh thạch).` };
+      if ((km().activeLoadout || 0) !== loadout && typeof g.switchLoadout === 'function') { try { g.switchLoadout(loadout); } catch (e) { return { ok: false, msg: 'Không đổi được bộ: ' + (e.message || e) }; } if (g.state.error) { const er = g.state.error; g.store.setState({ error: undefined }); return { ok: false, msg: 'Game không cho đổi bộ: ' + er + (/Túi/.test(er) ? '. Đổi bộ cần chỗ trống trong túi để cất đồ bộ cũ: bán hoặc vứt bớt đồ rồi bấm lại.' : '') }; } }
+    }
+    const same = (a, b) => a.item === b.item && a.x === b.x && a.y === b.y && a.xoay === b.xoay;
+    const want = target.map((m) => ({ item: m.item, x: m.x, y: m.y, xoay: m.xoay }));
+    const wantItems = new Set(want.map((m) => m.item));
+    const errs = [];
+    const K = S.core, Cc = C();
+    const grid = K.xo(Cc, g.state.run.nhanVat);
+    const cellsOf = (m) => K.al(grid, m, Cc.items.get(m.item)) || [];
+    const wantCells = new Set(want.flatMap(cellsOf));
+    const stuck = [];
+    // dời một món không cần tới chỗ không vướng cách xếp mới (khi túi đầy, không tháo được)
+    const parkAway = (i) => {
+      const m = km().manh[i];
+      for (let xoay = 0; xoay < 4; xoay++) for (let y = 0; y < grid.cao; y++) for (let x = 0; x < grid.rong; x++) {
+        const c = cellsOf({ item: m.item, x, y, xoay }); if (!c.length || c.some((q) => wantCells.has(q))) continue;
+        if (!step(() => g.doiManh(i, { x, y, xoay }))) return true;
+      }
+      return false;
+    };
+    // 1. Tháo món không có trong cách xếp mới
+    for (let i = km().manh.length - 1; i >= 0; i--) {
+      const m = km().manh[i]; if (wantItems.has(m.item)) continue;
+      const e = step(() => g.goManh(i));
+      if (e) { const ten = Cc.items.get(m.item)?.ten || m.item; if (cellsOf(m).some((q) => wantCells.has(q)) ? parkAway(i) : true) stuck.push(ten); else errs.push(`Tháo ${ten}: ${e}`); }
+    }
+    // 2. Dời / đặt, lặp vài vòng vì có món phải chờ món khác dời đi
+    for (let pass = 0; pass < 6; pass++) {
+      let progress = false, pending = 0;
+      for (const w of want) {
+        const cur = km().manh; const idx = cur.findIndex((m) => m.item === w.item);
+        if (idx >= 0 && same(cur[idx], w)) continue;
+        pending++;
+        const e = idx >= 0 ? step(() => g.doiManh(idx, { x: w.x, y: w.y, xoay: w.xoay })) : step(() => g.datManh(w));
+        if (!e) progress = true; else if (pass === 5) errs.push(`${C().items.get(w.item)?.ten || w.item}: ${e}`);
+      }
+      if (!pending) break;
+      if (!progress) {
+        // kẹt: tháo các món còn sai chỗ rồi đặt lại ở vòng sau
+        for (let i = km().manh.length - 1; i >= 0; i--) { const m = km().manh[i]; const w = want.find((x) => x.item === m.item); if (w && !same(m, w)) step(() => g.goManh(i)); }
+      }
+    }
+    g.store && g.store.setState && g.state.error && g.store.setState({ error: undefined });
+    const final = km().manh; const okAll = want.every((w) => final.some((m) => same(m, w)));
+    const extra = stuck.length ? ` Túi đầy nên chưa tháo được ${stuck.join(', ')} (đã dời ra chỗ không vướng); vứt hoặc bán bớt 1 món trong túi rồi tháo nó, hoặc bấm lại.` : '';
+    return { ok: okAll, msg: okAll ? `Đã xếp xong ${want.length} món vào kinh mạch${loadout !== undefined ? ' (Bộ ' + (loadout + 1) + ')' : ''}.${extra}` : 'Xếp chưa trọn: ' + (errs.slice(0, 4).join('; ') || 'có món không đặt được') + '.' + extra + ' Phần còn lại xếp tay theo ảnh.' };
+  }
+  const applyBtn = (id, label) => `<button class="vk-btn" id="${id}" style="margin:6px 0">${label}</button><div id="${id}-o" style="font-size:14px"></div>`;
+  function bindApply(id, getManh, loadout) {
+    const b = body.querySelector('#' + id); if (!b) return;
+    b.onclick = () => {
+      if (!confirm('Tool sẽ tự tháo / dời / đặt mảnh trên kinh mạch trong game của bạn (dùng chính thao tác của game).\n\nNên sao lưu save trước. Tiếp tục?')) return;
+      b.disabled = true;
+      const r = applyLayout(getManh(), loadout);
+      body.querySelector('#' + id + '-o').innerHTML = `<span class="${r.ok ? 'vk-ok' : 'vk-bad'}">${esc(r.msg)}</span>${r.ok ? '<br><span class="vk-mu" style="font-size:12px">Bấm Đóng để xem trong game. Nếu thấy không hợp, game có nút tháo hết mảnh để làm lại.</span>' : ''}`;
+      b.disabled = false;
+    };
+  }
   function showBest(nv) {
     const { cur, best } = S.best; const out = body.querySelector('#vk-out');
     if (!out) return;
-    out.innerHTML = (best.same ? '<div class="vk-ok" style="margin:6px 0">Cách đang xếp đã tốt nhất tool tìm được. Giữ nguyên như ảnh dưới (không cần xếp lại):</div>' + drawGrid(nv, best.manh) : '<div class="vk-ok" style="margin:6px 0">Xếp lại trong game theo ảnh dưới:</div>' + drawGrid(nv, best.manh) + stepList(nv, best.manh, cur.manh)) + statRows(cur, best) +
+    out.innerHTML = (best.same ? '<div class="vk-ok" style="margin:6px 0">Cách đang xếp đã tốt nhất tool tìm được. Giữ nguyên như ảnh dưới (không cần xếp lại):</div>' + drawGrid(nv, best.manh) : '<div class="vk-ok" style="margin:6px 0">Xếp lại trong game theo ảnh dưới, hoặc bấm nút để tool tự xếp:</div>' + applyBtn('vk-ap', 'Tự xếp vào game') + drawGrid(nv, best.manh) + stepList(nv, best.manh, cur.manh)) + statRows(cur, best) +
       ((best.R && best.R.diemNghich) ? `<div class="vk-mu" style="font-size:12px;margin-top:6px">Cách này còn ${best.R.diemNghich} điểm nghịch (−${Math.min(15, 3 * best.R.diemNghich)}% tỉ lệ đột phá). Lúc chuẩn bị đột phá, chọn chế độ "Ưu tiên tu luyện / đột phá" để tool ưu tiên xóa điểm nghịch.</div>` : '') +
       '<div class="vk-mu" style="font-size:12px;margin-top:6px">Trận mẫu: 9 loại quái cùng cảnh giới với bạn, ở tiểu cảnh giới quanh mức của bạn (thấp hơn 1, bằng, cao hơn 1).</div>' + pieceTable(best.R) + sellAdvice(nv, best);
+    bindApply('vk-ap', () => best.manh);
   }
   // Đồ công pháp/pháp khí không có mặt trong cách xếp tốt nhất → đề xuất bán
   function sellAdvice(nv, best) {
