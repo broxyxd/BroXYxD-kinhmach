@@ -11,7 +11,7 @@ const TOOL_VER = '2.2.0-km';
     eJ:  [/\.doDung\)!=null&&/, 'mô phỏng trận'],
     Vr:  [/return\{ten:\w\.ten,drugResistTran:\{\},drugRetention:/, 'chỉ số nhân vật khi đánh'],
     Ga:  [/muc\?\?"thuong",\w=\w\.canh_gioi/, 'dựng quái'],
-    Rt:  [/\.kinhMach,\w=new Set\(\w\.huyetThem\)|=\w\.kinhMach,\w=`\$\{\w\.theChat\}\|\$\{\w\.canhGioi\}/, 'tính kinh mạch'],
+    Rt:  [/\.kinhMach,\w=new Set\(\w\.huyetThem\)|=\w\.kinhMach,\w=`\$\{\w\.theChat\}\|\$\{\w\.canhGioi\}|=\w\.kinhMach,\w=\w\.natal,\w=/, 'tính kinh mạch'],
     Tp:  ['.khuon.split(', 'khuôn kinh mạch'],
     al:  [/\(\w\.hinh\?\?\[\],\w\.xoay\)/, 'ô của mảnh'],
     Jh:  ['Món này đã có trên kinh mạch', 'kiểm tra chỗ đặt'],
@@ -22,6 +22,9 @@ const TOOL_VER = '2.2.0-km';
   const REGEX_OPT = {
     At: [/function ([\w$]+)\(\w,\w\)\{if\(!\w\)return!0;for\(const\[\w,\w\]of Object\.entries\(\w\)\)\{const \w=[\w$]+\.get\(\w\);if\(!\w\)throw new Error\(`Điều kiện lạ/, 'kiểm tra điều kiện'],
     Om: [/function ([\w$]+)\(\w,\w\)\{if\(!\w\)return"";const \w=\[\];for\(const\[\w,\w\]of Object\.entries\(\w\)\)\{const \w=[\w$]+\.get\(\w\);!\w\|\|/, 'giải thích điều kiện'],
+    kv: [/function ([\w$]+)\(\w,\w\)\{var \w;const \w=[\w$]+\(\w\),\w=[\w$]+\(\w\),\w=[\w$]+\(\w\);return\{years:/, 'chi phí bản mệnh'],
+    I8: [/function ([\w$]+)\(\w,\w\)\{if\(\w\.natal\)return"Đã có bản mệnh\. Hóa bản mệnh cũ trước\."/, 'điều kiện bản mệnh'],
+    rS: [/function ([\w$]+)\(\w\)\{const \w=\w\.chieu;if\(!\w\)return [\w$]+\(\w\);const \w=new Set\(\(\w\.effects\?\?\[\]\)/, 'khiếu bản mệnh'],
     IP: [/function ([\w$]+)\(\w,\w,\w,\w=0\)\{return [\w$]+\(\w,\w,\w,\w,[\w$]+\(\w,\w,"sell",\w\)\)\}/, 'giá bán'],
   };
 
@@ -136,16 +139,34 @@ const TOOL_VER = '2.2.0-km';
   }
 
   // ───────────────────────── 4. Tối ưu kinh mạch ─────────────────────────
+  // ───────────────────────── Lối tu (theo nhãn đồ) ─────────────────────────
+  const LOI = [
+    ['the', 'Thể tu', 'Chính đạo'], ['phat', 'Phật tu', 'Chính đạo'], ['kiem', 'Kiếm tu', 'Chính đạo'],
+    ['ma', 'Ma tu', 'Tà đạo'], ['doc', 'Độc cổ', 'Tà đạo'], ['hop_hoan', 'Hợp hoan', 'Tà đạo'], ['quy', 'Quỷ tu', 'Tà đạo'], ['thi', 'Luyện thi', 'Tà đạo'],
+    ['dan', 'Đan tu', 'Nghề'], ['tran', 'Trận tu', 'Nghề'], ['phu', 'Phù tu', 'Nghề'], ['khi', 'Luyện bảo', 'Nghề'],
+  ];
+  const TA_DAO = ['ma', 'doc', 'hop_hoan', 'quy', 'thi'];
+  const HE_LOI = ['kim', 'moc', 'thuy', 'hoa', 'tho', 'bang', 'loi', 'phong'];
+  const NL2S = { trung: 'doc', thi: 'thi', hon: 'quy' };
+  const schoolsOf = (it) => {
+    const t = (it.tag || []).filter((x) => LOI.some((l) => l[0] === x));
+    const nl = it.ngu_linh && NL2S[it.ngu_linh.loai]; if (nl && !t.includes(nl)) t.push(nl);
+    if ((it.tag || []).includes('nghich') && !t.includes('ma')) t.push('ma');
+    return t;
+  };
+  // st: 's:the' (lối theo nhãn) hoặc 'e:kim' (theo hệ linh căn)
+  const loiMatch = (st, it) => st.startsWith('s:') ? schoolsOf(it).includes(st.slice(2)) : (it.he || []).includes(st.slice(2));
+  const loiTen = (st) => st.startsWith('s:') ? ((LOI.find((l) => l[0] === st.slice(2)) || [])[1] || st) : (heTen(st.slice(2)) + ' tu');
   function makeEval(nv0, enemies, mode) {
     const K = S.core, c = C();
     // Dùng chung bộ nhớ đệm giữa các lần tìm có cùng kinh mạch, nhân vật và chế độ (bỏ qua túi đồ: chỉ cách xếp mới đổi kết quả)
     S.ec = S.ec || new Map();
-    const sig = mode + '|' + JSON.stringify({ ...nv0, tuiDo: 0, kinhMach: { ...nv0.kinhMach, manh: 0 } });
+    const sig = mode + '|' + (S.style || 'auto') + '|' + (S.llp || 'min') + '|' + JSON.stringify({ ...nv0, tuiDo: 0, kinhMach: { ...nv0.kinhMach, manh: 0 } });
     let cache = S.ec.get(sig); if (!cache) { cache = new Map(); S.ec.set(sig, cache); if (S.ec.size > 12) S.ec.delete(S.ec.keys().next().value); }
     return (manh) => {
       const key = manh.map((p) => p.key).sort().join('|');
       if (cache.has(key)) return cache.get(key);
-      const nv = clone(nv0); nv.kinhMach.manh = manh.map((p) => ({ ...p.m }));
+      const nv = { ...nv0, kinhMach: { ...nv0.kinhMach, manh: manh.map((p) => ({ ...p.m })) } };
       const R = K.Rt(nv, c), P = K.Vr(nv, c);
       let fightScore = 0, wins = 0;
       for (const { E } of enemies) {
@@ -156,19 +177,47 @@ const TOOL_VER = '2.2.0-km';
         else fightScore += 50 * dealt;
       }
       const thong = R.manh.filter((m) => m && m.thong).length;
-      const toc = R.biDong.toc_do || 0, dp = R.biDong.dot_pha || 0;
+      const toc = R.biDong.toc_do || 0, dp = Math.min(0.12, R.biDong.dot_pha || 0);
       const ng = R.diemNghich || 0;
       // Linh lực: hồi mỗi lượt phải đủ ra chiêu; món không thông chỉ chiếm chỗ.
       const ll = P.linhLucMoiLuot || 0;
       const atk = (P.chieu || []).filter((x) => x.dang && x.phi > 0).map((x) => x.phi);
       const minCost = atk.length ? Math.min(...atk) : 0;
       const dead = R.manh.filter((m) => m && !m.thong).length;
-      const llScore = (mode === 'tu' ? 1 : mode === 'danh' ? 5 : 4) * ll - (minCost && ll < minCost ? 30 : 0) - 8 * dead;
+      const wLL = mode === 'tu' ? 1 : mode === 'danh' ? 5 : 4, lp = S.llp || 'min';
+      let req = minCost;
+      if (lp !== 'min') {
+        const sk = (P.chieu || []).filter((x) => x.dang !== undefined && x.phi > 0);
+        const cong = sk.filter((x) => x.dang === 'cong').sort((a, b) => (b.uy || 0) - (a.uy || 0));
+        const pl = cong.length ? cong : sk.slice().sort((a, b) => (b.uy || 0) - (a.uy || 0));
+        req = !sk.length ? 0 : lp === 'one' ? pl[0].phi : lp === 'two' ? pl.slice(0, 2).reduce((a, x) => a + x.phi, 0) : sk.reduce((a, x) => a + x.phi, 0);
+      }
+      // 'min': đủ chiêu rẻ nhất; các mức khác: đủ số chiêu muốn ra mỗi lượt, dư linh lực thì chỉ còn thưởng nhẹ
+      const llScore = lp === 'min' ? wLL * ll - (minCost && ll < minCost ? 30 : 0) - 8 * dead
+        : wLL * Math.min(ll, req) + 0.25 * wLL * Math.max(0, ll - req) - (req && ll < req ? 30 + 12 * (req - ll) : 0) - 8 * dead;
+      // Lối tu: thưởng theo chỉ số hợp lối (so với mức đầu tiên gặp, tối đa gấp 3)
+      let sb = 0; const st = S.style || 'auto';
+      if (st.startsWith('s:') || st.startsWith('e:')) {
+        const pcs = R.manh.map((rm, i) => (rm && rm.thong ? c.items.get(manh[i].m.item) : null)).filter(Boolean);
+        const mt = pcs.filter((it) => loiMatch(st, it)).length, r = pcs.length ? mt / pcs.length : 0;
+        sb = 100 * Math.min(1, r / 0.5) + (mt ? 10 : 0) + (TA_DAO.includes(st.slice(2)) && st.startsWith('s:') && r >= 1 / 3 ? 40 : 0);
+      } else if (st !== 'auto') {
+        const sk = (P.chieu || []).filter((x) => x.dang !== undefined), sm = (fl) => sk.filter(fl).reduce((a, x) => a + (x.uy || 0), 0);
+        let m;
+        if (st === 'cong') m = sm((x) => x.dang === 'cong');
+        else if (st === 'khong') m = sm((x) => x.dang === 'khong_che');
+        else if (st === 'hoi') m = sm((x) => x.dang === 'hoi_phuc' || x.dang === 'thu');
+        else if (st === 'dot') { m = 0; R.manh.forEach((rm, i) => { const itm = rm && rm.thong && c.items.get(manh[i].m.item); const eff = itm && itm.chieu && itm.chieu.effects || []; m += (itm && itm.chieu ? (itm.chieu.uy || 0) : 0) * eff.filter((e) => ['bleed', 'poison', 'burn', 'chill'].includes(e.kind)).length; }); }
+        else m = (P.khiHuyetToiDa || 0) / (1 - Math.min(0.6, P.hoThe || 0)); // 'hp'
+        if (!(cache.ref > 0) && m > 0) cache.ref = m;
+        sb = cache.ref > 0 ? 120 * Math.min(3, m / cache.ref) : 0;
+      }
       let s;
       // Điểm nghịch: mỗi điểm −3% tỉ lệ đột phá (tối đa −15%), thêm phản phệ trong trận (trận mẫu đã tính).
       if (mode === 'tu') s = 0.3 * fightScore + 400 * toc + 300 * dp + thong - 40 * ng + llScore;
       else if (mode === 'danh') s = fightScore + 0.2 * thong - 3 * ng + llScore;
       else s = fightScore + 30 * toc + 20 * dp + 0.2 * thong - 10 * ng + llScore;
+      s += sb;
       const out = { s, wins, P, R };
       cache.set(key, out);
       return out;
@@ -202,10 +251,10 @@ const TOOL_VER = '2.2.0-km';
   async function greedy(nv0, mode) {
     const K = S.core, c = C(), { cand } = buildCandidates(nv0);
     const quick = (manh) => {
-      const nv = clone(nv0); nv.kinhMach.manh = manh.map((p) => ({ ...p.m }));
+      const nv = { ...nv0, kinhMach: { ...nv0.kinhMach, manh: manh.map((p) => ({ ...p.m })) } };
       const R = K.Rt(nv, c);
       const uy = (R.chieu || []).reduce((a, x) => a + (x.uyLuc || x.uy || 0) / 10, 0);
-      const toc = R.biDong.toc_do || 0, dp = R.biDong.dot_pha || 0;
+      const toc = R.biDong.toc_do || 0, dp = Math.min(0.12, R.biDong.dot_pha || 0);
       const w = mode === 'tu' ? [0.5, 60, 40, 0.3] : mode === 'danh' ? [1.5, 3, 2, 1.2] : [1, 12, 8, 1];
       const thongAll = R.manh.every((m) => !m || m.thong);
       return w[0] * R.linhLuc + w[1] * toc + w[2] * dp + w[3] * uy - 6 * (R.diemNghich || 0) - (thongAll ? 0 : 1000);
@@ -238,10 +287,12 @@ const TOOL_VER = '2.2.0-km';
     const overlaps = (manh, c, skip = -1) => { const used = new Set(); manh.forEach((p, i) => { if (i !== skip) p.cells.forEach((x) => used.add(x)); }); return c.cells.some((x) => used.has(x)); };
     let lastY = performance.now(), cur = [];
     if (init) for (const m of init) { const c = (cand[m.item] || []).find((c) => c.m.x === m.x && c.m.y === m.y && c.m.xoay === m.xoay); if (c && !overlaps(cur, c)) cur.push(c); }
-    let curS = ev(cur).s, best = cur, bestS = curS;
+    let curS = ev(cur).s, best = cur, bestS = curS, lastImp = 0;
+    const stall = Math.max(250, Math.round(iters * 0.35));
     const T0 = init && init.length ? 10 : 40;
     for (let it = 0; it < iters; it++) {
       if (S.abort) break;
+      if (it - lastImp > stall) break; // lâu không tốt hơn thì dừng sớm
       if (it % 8 === 0 && performance.now() - lastY > 40) { onProg && onProg(it / iters, label); await sleep0(); lastY = performance.now(); }
       const T = Math.max(0.4, T0 * (1 - it / iters));
       const next = cur.slice(); const r = rnd();
@@ -251,7 +302,7 @@ const TOOL_VER = '2.2.0-km';
       else if (r < 0.9) { const i = Math.floor(rnd() * next.length); const id = next[i].m.item; const c = cand[id][Math.floor(rnd() * cand[id].length)]; if (overlaps(next, c, i)) continue; next[i] = c; }
       else { const i = Math.floor(rnd() * next.length); const f = free(); if (!f.length) continue; const id = f[Math.floor(rnd() * f.length)]; const c = cand[id][Math.floor(rnd() * cand[id].length)]; if (overlaps(next, c, i)) continue; next[i] = c; }
       const e = ev(next);
-      if (e.s >= curS || rnd() < Math.exp((e.s - curS) / T)) { cur = next; curS = e.s; if (e.s > bestS) { best = next; bestS = e.s; } }
+      if (e.s >= curS || rnd() < Math.exp((e.s - curS) / T)) { cur = next; curS = e.s; if (e.s > bestS + 1e-9) { best = next; bestS = e.s; lastImp = it; } }
     }
     const e = ev(best);
     return { manh: best.map((p) => ({ ...p.m })), score: e.s, wins: e.wins, n: enemies.length, P: e.P, R: e.R };
@@ -703,6 +754,56 @@ const TOOL_VER = '2.2.0-km';
   }
 
   // ───────────────────────── Lịch mở bí cảnh (tính đúng công thức của game từ seed kiếp này) ─────────────────────────
+  // ───────────────────────── Bản mệnh pháp bảo ─────────────────────────
+  const VAN = { 'van.thieu': 'Thiêu đốt', 'van.doc': 'Trúng độc', 'van.han': 'Hàn khí', 'van.troi': 'Trói', 'van.kim_chung': 'Kim chung (hộ thuẫn)', 'van.hut_huyet': 'Hút huyết', 'van.liet': 'Liệt (sát thương)' };
+  const vanTen = (id) => VAN[id] || String(id || '').replace(/^van\./, '');
+  function renderNatal(nv) {
+    const box = body.querySelector('#vk-nt'); if (!box) return;
+    const K = S.core, Cc = C(), nat = nv.natal;
+    let h = '<div class="vk-card"><h3>Bản mệnh pháp bảo</h3><div class="vk-mu" style="font-size:13px">Bản mệnh là một pháp khí (phẩm Hoàng trở lên) được tế luyện từ Trúc Cơ. Món đó biến mất khỏi túi và không còn đặt lên kinh mạch được. Đổi lại nó cho một chiêu riêng, một khiếu bẩm sinh và các văn khắc, càng dùng càng mạnh (tâm huyết). Tế luyện tốn thọ nguyên và linh thạch, có thể thất bại; nếu thất bại món vẫn còn nhưng thọ nguyên đã mất.</div>';
+    if (nat) {
+      const it = Cc.items.get(nat.item);
+      h += `<table class="vk-t" style="margin-top:8px"><tr><td>Bản mệnh</td><td><b>${esc(it ? it.ten : nat.item)}</b></td></tr><tr><td>Phẩm</td><td>${PHAM[nat.grade] || nat.grade}${nat.base && nat.base !== nat.grade ? ` (gốc ${PHAM[nat.base] || nat.base})` : ''}</td></tr><tr><td>Tâm huyết</td><td>${nat.exp}</td></tr><tr><td>Khiếu bẩm sinh</td><td>${esc(vanTen(nat.innate && nat.innate.id))} (cấp ${(nat.innate && nat.innate.level) || 0})</td></tr><tr><td>Văn đã khắc</td><td>${(nat.runes || []).length ? nat.runes.map((r) => esc(vanTen(r))).join(', ') : '<span class="vk-mu">chưa có</span>'}</td></tr></table>` +
+        '<div class="vk-mu" style="font-size:12px;margin-top:6px">Bạn đã có bản mệnh. Muốn đổi món khác phải "Hóa bản mệnh" trong game trước. Các bảng xếp kinh mạch của tool đã tính sẵn chiêu và chỉ số của bản mệnh.</div></div>';
+      box.innerHTML = h; return;
+    }
+    if (!K.I8 || !K.kv || !K.rS) { box.innerHTML = h + '<div class="vk-bad" style="margin-top:8px">Game đổi cách tính bản mệnh nên tool chưa đọc được phần chọn món. Phần xếp kinh mạch vẫn dùng được.</div></div>'; return; }
+    const pool = Object.keys(nv.tuiDo).filter((id) => nv.tuiDo[id] > 0).map((id) => Cc.items.get(id)).filter((it) => it && it.loai === 'phap_khi');
+    const rows = pool.map((it) => { let err = null, cost = null; try { err = K.I8(nv, it); } catch (e) { err = 'không rõ'; } try { cost = K.kv(nv, it); } catch (e) { /* bỏ qua */ } return { it, err, cost }; }).filter((x) => x.cost);
+    rows.sort((a, b) => (b.it.pham_cap || 0) - (a.it.pham_cap || 0));
+    const top = rows.slice(0, 6);
+    h += `<div class="vk-mu" style="font-size:13px;margin-top:8px">Chưa có bản mệnh. Tool thử từng pháp khí trong túi (tối đa 6 món phẩm cao nhất): cho món đó làm bản mệnh, xếp lại kinh mạch bằng đồ còn lại, rồi so điểm với cách xếp hiện tại. Chỉ tính lúc mới tế luyện (tâm huyết 0, chưa khắc văn).</div>
+      <button class="vk-btn" id="vk-ntgo" ${top.length ? '' : 'disabled'}>So sánh các món làm bản mệnh</button>${progressHtml('vk-ntpr')}<div id="vk-nto">${top.length ? '' : '<div class="vk-mu" style="margin-top:6px">Trong túi chưa có pháp khí nào để tế luyện.</div>'}</div></div>`;
+    box.innerHTML = h;
+    const go = box.querySelector('#vk-ntgo'); if (!go) return;
+    go.onclick = async () => {
+      go.disabled = true; S.abort = false;
+      const prog = bindProgress(box.querySelector('#vk-ntpr')), out = box.querySelector('#vk-nto'), mode = body.querySelector('#vk-mode').value;
+      try {
+        const nv0 = clone(nv); nv0.kinhMach.manh = [];
+        const base = await anneal({ nv0, mode, iters: 700, init: nv.kinhMach.manh, onProg: (f) => prog(f / (top.length + 1), 'Mốc hiện tại…') });
+        const res = [];
+        for (let k = 0; k < top.length && !S.abort; k++) {
+          const { it, err, cost } = top[k], id = it.id;
+          const nvC = clone(nv0); nvC.tuiDo[id] = (nvC.tuiDo[id] || 1) - 1; if (nvC.tuiDo[id] <= 0) delete nvC.tuiDo[id];
+          const p = Math.max(1, Math.min(8, it.pham_cap ?? 2));
+          nvC.natal = { item: id, base: p, grade: p, exp: 0, innate: { id: K.rS(it), level: 0, points: 0 }, runes: [] };
+          const r = await anneal({ nv0: nvC, mode, iters: 700, init: base.manh.filter((m) => m.item !== id), onProg: (f) => prog((k + 1 + f) / (top.length + 1), `Thử ${esc(it.ten)}…`) });
+          res.push({ it, err, cost, r, gain: r.score - base.score });
+        }
+        res.sort((a, b) => b.gain - a.gain);
+        box.querySelector('#vk-ntpr').style.display = 'none';
+        const best = res[0];
+        let html = '';
+        if (best && best.gain > 1) html += `<div class="vk-ok" style="margin:6px 0">Món lợi nhất làm bản mệnh: <b>${esc(best.it.ten)}</b> (điểm +${Math.round(best.gain)} so với không có bản mệnh).</div>`;
+        else html += '<div class="vk-mu" style="margin:6px 0">Với đồ hiện có, làm bản mệnh chưa thấy lợi hơn giữ nguyên. Cân nhắc khi có pháp khí tốt hơn.</div>';
+        html += `<table class="vk-t"><tr><th>Pháp khí</th><th>Thắng</th><th>Lợi</th><th>Chi phí tế luyện</th></tr>` + res.map((x) => `<tr><td><b>${esc(x.it.ten)}</b><br><span class="vk-mu" style="font-size:12px">phẩm ${PHAM[x.it.pham_cap || 0] || ''}${x.err ? ' · <span class="vk-bad">' + esc(x.err) + '</span>' : ''}</span></td><td>${x.r.wins}/${x.r.n}</td><td>${x.gain > 1 ? '<span class="vk-ok">+' + Math.round(x.gain) + '</span>' : x.gain < -1 ? '<span class="vk-bad">' + Math.round(x.gain) + '</span>' : '<span class="vk-mu">≈0</span>'}</td><td style="font-size:13px">${num(x.cost.essence, 0)} năm thọ · ${num(x.cost.stone, 0)} linh thạch · thất bại ${x.cost.failPercent}%${x.cost.years ? ' · mất ' + num(x.cost.years, 1) + ' năm' : ''}</td></tr>`).join('') + '</table>' +
+          '<div class="vk-mu" style="font-size:12px;margin-top:6px">Thất bại: món vẫn còn nhưng hao khoảng một nửa số năm thọ ghi ở trên (theo hằng số của game). "Lợi" là chênh điểm tool chấm khi mới tế luyện; bản mệnh còn mạnh lên nhờ tâm huyết và văn nên về lâu dài có thể hơn. Món đang đặt trên kinh mạch phải gỡ ra trước khi tế luyện.</div>';
+        out.innerHTML = html;
+      } catch (e) { console.error(e); out.innerHTML = errBox(e); }
+      go.disabled = false;
+    };
+  }
   function renderBiCanh() {
     const box = body.querySelector('#vk-bc'); if (!box) return;
     const K = S.core, Cc = C(), g = G(), run = g.state.run, world = g.env && g.env.world;
@@ -743,7 +844,7 @@ const TOOL_VER = '2.2.0-km';
       ['Linh lực tối đa', num(a.P.linhLucToiDa ?? a.P.linhLucMoiLuot * 3), num(b.P.linhLucToiDa ?? b.P.linhLucMoiLuot * 3)],
       ['Chiêu tốn nhiều nhất', num(Math.max(0, ...a.P.chieu.map((x) => x.phi || 0))), num(Math.max(0, ...b.P.chieu.map((x) => x.phi || 0)))],
       ['Tu luyện', '+' + pct(a.R.biDong.toc_do || 0), '+' + pct(b.R.biDong.toc_do || 0)],
-      ['Đột phá', '+' + pct(a.R.biDong.dot_pha || 0, 1), '+' + pct(b.R.biDong.dot_pha || 0, 1)],
+      ['Đột phá', '+' + pct(Math.min(0.12, a.R.biDong.dot_pha || 0), 1), '+' + pct(Math.min(0.12, b.R.biDong.dot_pha || 0), 1)],
       ['Điểm nghịch', a.R.diemNghich || 0, b.R.diemNghich || 0],
     ];
     return `<table class="vk-t"><tr><th></th><th>Đang xếp</th><th>Bản mới</th></tr>${rows.map((r) => `<tr><td>${r[0]}</td><td>${r[1]}</td><td><b>${r[2]}</b></td></tr>`).join('')}
@@ -754,7 +855,7 @@ const TOOL_VER = '2.2.0-km';
     const nv = nvNow(), c0 = C();
     const tac = nv.kinhMach.trangThai.map((s, i) => (s === 'tac' ? i : -1)).filter((i) => i >= 0);
     const mo = (nv.kinhMach.cho && nv.kinhMach.cho.mo) || 0;
-    const KT = [['cur', 'Hiện tại'], ['opt', 'Xếp tối ưu'], ['buy', 'Nên mua'], ['cat', 'Danh mục'], ['ev', 'Sự kiện'], ['bc', 'Bí cảnh']];
+    const KT = [['cur', 'Hiện tại'], ['opt', 'Xếp tối ưu'], ['buy', 'Nên mua'], ['cat', 'Danh mục'], ['ev', 'Sự kiện'], ['bc', 'Bí cảnh'], ['nt', 'Bản mệnh']];
     S.kt = S.kt || 'opt';
     body.innerHTML = `
     <div class="vk-card" style="margin-bottom:8px"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:14px">Mục tiêu:</b> <select class="vk-sel" id="vk-mode"><option value="bal">Cân bằng (đánh + tu luyện)</option><option value="danh">Ưu tiên đánh nhau</option><option value="tu">Ưu tiên tu luyện / đột phá</option></select></div><label style="display:flex;gap:6px;align-items:center;margin-top:6px;font-size:13px"><input type="checkbox" id="vk-lt" ${S.lt ? 'checked' : ''}> Tính khi đã lĩnh ngộ xong (xếp lâu dài)</label><div class="vk-mu" style="font-size:12px;margin-top:4px">Áp dụng cho Xếp tối ưu, Nên mua và Thử món ở Danh mục. Bỏ tick = tính theo sức hiện tại (món mới chỉ 50%).</div></div>
@@ -775,6 +876,8 @@ const TOOL_VER = '2.2.0-km';
     <div class="vk-card"><h3>Xếp kinh mạch tối ưu</h3>
       <div class="vk-mu" style="font-size:13px">Tool thử hàng nghìn cách xếp các món trong túi, đánh thử ${'9'} trận mẫu cùng cảnh giới cho mỗi cách và giữ cách tốt nhất.</div>
       <div style="margin:8px 0"><select class="vk-sel" id="vk-it"><option value="1500">Nhanh</option><option value="3000" selected>Vừa</option><option value="6000">Kỹ (lâu)</option></select></div>
+      <div style="margin:6px 0"><span class="vk-mu" style="font-size:13px">Lối tu:</span> <select class="vk-sel" id="vk-style"><option value="auto">Tự động</option><optgroup label="Chính đạo"><option value="s:the">Thể tu</option><option value="s:phat">Phật tu</option><option value="s:kiem">Kiếm tu</option></optgroup><optgroup label="Tà đạo"><option value="s:ma">Ma tu</option><option value="s:doc">Độc cổ</option><option value="s:hop_hoan">Hợp hoan</option><option value="s:quy">Quỷ tu</option><option value="s:thi">Luyện thi</option></optgroup><optgroup label="Nghề"><option value="s:dan">Đan tu</option><option value="s:tran">Trận tu</option><option value="s:phu">Phù tu</option><option value="s:khi">Luyện bảo</option></optgroup><optgroup label="Theo hệ linh căn"><option value="e:kim">Kim tu</option><option value="e:moc">Mộc tu</option><option value="e:thuy">Thủy tu</option><option value="e:hoa">Hỏa tu</option><option value="e:tho">Thổ tu</option><option value="e:bang">Băng tu</option><option value="e:loi">Lôi tu</option><option value="e:phong">Phong tu</option></optgroup><optgroup label="Theo kiểu đánh"><option value="cong">Công kích mạnh</option><option value="hp">Trâu bò (khí huyết + hộ thể)</option><option value="khong">Khống chế</option><option value="hoi">Hồi phục / hộ thuẫn</option><option value="dot">Hiệu ứng (độc, chảy máu, thiêu, hàn)</option></optgroup></select>
+      <span class="vk-mu" style="font-size:13px">Linh lực:</span> <select class="vk-sel" id="vk-llp"><option value="min">Đủ chiêu rẻ nhất</option><option value="one">Đủ chiêu công mạnh nhất mỗi lượt</option><option value="two">Đủ 2 chiêu công mỗi lượt</option><option value="all">Đủ mọi chiêu đang xếp mỗi lượt</option></select></div>
       <button class="vk-btn" id="vk-go">Bắt đầu xếp</button>
       ${progressHtml('vk-pr')}<div id="vk-out"></div></div>
     <div class="vk-card"><h3>Hai bộ kinh mạch: bế quan và đánh</h3>
@@ -799,6 +902,7 @@ const TOOL_VER = '2.2.0-km';
     </section>
     <section data-ks="ev"><div id="vk-ev"></div></section>
     <section data-ks="bc"><div id="vk-bc"></div></section>
+    <section data-ks="nt"><div id="vk-nt"></div></section>
     <section data-ks="cat">
     <div class="vk-card"><h3>Danh mục món theo cảnh giới</h3>
       <div class="vk-mu" style="font-size:13px">Xem công pháp, đấu pháp, pháp khí theo từng cảnh giới, sắp theo thứ bạn cần. "Mạnh nhất" là điểm ước tính từ số liệu gốc của món, chưa tính chỗ đặt. Bấm "Thử trên kinh mạch của tôi" ở món nào để biết nó hợp kinh mạch hiện tại không (dùng chế độ ở khối "Xếp kinh mạch tối ưu").</div>
@@ -812,7 +916,7 @@ const TOOL_VER = '2.2.0-km';
 
     try { body.querySelector('#vk-cur').innerHTML = drawGrid(nv, nv.kinhMach.manh); } catch (e) { body.querySelector('#vk-cur').innerHTML = errBox(e); }
     try { const bag = Object.keys(nv.tuiDo).filter((id) => nv.tuiDo[id] > 0).map((id) => c0.items.get(id)).filter((it) => it && (it.loai === 'cong_phap' || it.loai === 'phap_khi') && it.hinh && chuaLN(nv, it.id)); body.querySelector('#vk-curst').insertAdjacentHTML('beforebegin', bag.length ? `<div class="vk-card" style="border-color:#b3261e;margin-top:8px"><b class="vk-bad">Món trong túi chưa lĩnh ngộ / luyện hóa:</b> ${bag.map((it) => esc(it.ten)).join(', ')}. ${lnExplain(nv, bag)}</div>` : ''); } catch (e) { console.error(e); }
-    try { const e0 = evalCurrent(nv, body.querySelector('#vk-mode').value); body.querySelector('#vk-curst').innerHTML = `<table class="vk-t" style="margin-top:8px"><tr><td>Thắng trận mẫu</td><td><b>${e0.wins}/${e0.n}</b></td></tr><tr><td>Khí huyết</td><td><b>${Math.round(e0.P.khiHuyetToiDa)}</b></td></tr><tr><td>Linh lực hồi / lượt</td><td><b>${num(e0.P.linhLucMoiLuot)}</b></td></tr><tr><td>Tu luyện</td><td><b>+${pct(e0.R.biDong.toc_do || 0)}</b></td></tr><tr><td>Đột phá</td><td><b>+${pct(e0.R.biDong.dot_pha || 0, 1)}</b></td></tr><tr><td>Điểm nghịch</td><td><b>${e0.R.diemNghich || 0}</b></td></tr></table>` + pieceTable(e0.R); } catch (e) { console.error(e); }
+    try { const e0 = evalCurrent(nv, body.querySelector('#vk-mode').value); body.querySelector('#vk-curst').innerHTML = `<table class="vk-t" style="margin-top:8px"><tr><td>Thắng trận mẫu</td><td><b>${e0.wins}/${e0.n}</b></td></tr><tr><td>Khí huyết</td><td><b>${Math.round(e0.P.khiHuyetToiDa)}</b></td></tr><tr><td>Linh lực hồi / lượt</td><td><b>${num(e0.P.linhLucMoiLuot)}</b></td></tr><tr><td>Tu luyện</td><td><b>+${pct(e0.R.biDong.toc_do || 0)}</b></td></tr><tr><td>Đột phá</td><td><b>+${pct(Math.min(0.12, e0.R.biDong.dot_pha || 0), 1)}</b></td></tr><tr><td>Điểm nghịch</td><td><b>${e0.R.diemNghich || 0}</b></td></tr></table>` + pieceTable(e0.R); } catch (e) { console.error(e); }
     if (S.best && S.best.nvKey === JSON.stringify([nv.tuiDo, nv.kinhMach.trangThai, nv.canhGioi, nv.tieuCanhGioi])) showBest(nv);
     body.querySelector('#vk-go').onclick = async (ev) => {
       ev.target.disabled = true; S.abort = false;
@@ -823,10 +927,10 @@ const TOOL_VER = '2.2.0-km';
         const cur = evalCurrent(nv, mode);
         prog(0.02, 'Xếp nhanh…');
         const g0 = await greedy(nv0, mode);
-        const a = await anneal({ nv0, mode, iters: Math.round(iters * 0.6), init: g0, onProg: (f) => prog(0.05 + f * 0.35, 'Tìm từ bản xếp nhanh…') });
-        const a2 = await anneal({ nv0, mode, iters: Math.round(iters * 0.6), init: null, onProg: (f) => prog(0.4 + f * 0.3, 'Tìm từ đầu…') });
+        const a = await anneal({ nv0, mode, iters: Math.round(iters * 0.5), init: g0, onProg: (f) => prog(0.05 + f * 0.35, 'Tìm từ bản xếp nhanh…') });
+        const a2 = await anneal({ nv0, mode, iters: Math.round(iters * 0.4), init: null, onProg: (f) => prog(0.4 + f * 0.3, 'Tìm từ đầu…') });
         const top = [a, a2, cur].sort((x, y) => y.score - x.score)[0];
-        const b = await anneal({ nv0, mode, iters: Math.round(iters / 2), init: top.manh, onProg: (f) => prog(0.7 + f * 0.3, 'Đang tinh chỉnh…') });
+        const b = await anneal({ nv0, mode, iters: Math.round(iters * 0.3), init: top.manh, onProg: (f) => prog(0.7 + f * 0.3, 'Đang tinh chỉnh…') });
         let best = [a, a2, b].sort((x, y) => y.score - x.score)[0];
         best = stripDead(nv, best, mode);
         if (cur.score >= best.score && !(cur.R.manh || []).some((m) => m && !m.thong)) best = { ...cur, same: true };
@@ -836,19 +940,21 @@ const TOOL_VER = '2.2.0-km';
       } catch (e) { console.error(e); body.querySelector('#vk-out').innerHTML = errBox(e); }
       ev.target.disabled = false;
     };
+    ['style', 'llp'].forEach((k) => { const el = body.querySelector('#vk-' + k); if (!el) return; el.value = S[k] || (k === 'style' ? 'auto' : 'min'); el.onchange = () => { S[k] = el.value; S.best = null; const o = body.querySelector('#vk-out'); if (o) o.innerHTML = ''; }; });
     body.querySelector('#vk-lt').addEventListener('change', (e) => { S.lt = e.target.checked; S.ec = null; S.best = null; render(); });
     bindBuy(nv); bindCat(nv); bindDoi(nv);
     try { renderEvent(nv); } catch (e) { console.error(e); body.querySelector('#vk-ev').innerHTML = errBox(e); }
     try { renderBiCanh(); } catch (e) { console.error(e); body.querySelector('#vk-bc').innerHTML = errBox(e); }
+    try { renderNatal(nv); } catch (e) { console.error(e); body.querySelector('#vk-nt').innerHTML = errBox(e); }
     body.querySelector('#vk-2b').onclick = async (ev) => {
       ev.target.disabled = true; S.abort = false;
       const prog = bindProgress(body.querySelector('#vk-pr2b'));
       try {
         const res = {};
-        for (const [k, mode, f0, f1] of [['tu', 'tu', 0, 0.5], ['danh', 'danh', 0.5, 1]]) res[k] = await optimizeMode(nv, mode, 2400, prog, f0, f1, mode === 'tu' ? 'Bộ tu luyện…' : 'Bộ đánh…');
+        for (const [k, mode, f0, f1] of [['tu', 'tu', 0, 0.5], ['danh', 'danh', 0.5, 1]]) res[k] = await optimizeMode(nv, mode, 1600, prog, f0, f1, mode === 'tu' ? 'Bộ tu luyện…' : 'Bộ đánh…');
         body.querySelector('#vk-pr2b').style.display = 'none';
         const box = (title, r, note, k) => `<div style="margin-top:12px"><b>${title}</b> <span class="vk-mu" style="font-size:13px">${note}</span>${applyBtn('vk-ap' + k, 'Tự xếp vào ' + title.split(' · ')[0])}
-          <div style="font-size:14px;margin:4px 0">Thắng ${r.wins}/${r.n} trận mẫu · tu luyện +${pct(r.R.biDong.toc_do || 0)} · đột phá +${pct(r.R.biDong.dot_pha || 0, 1)} · điểm nghịch ${r.R.diemNghich || 0}</div>${drawGrid(nv, r.manh)}</div>`;
+          <div style="font-size:14px;margin:4px 0">Thắng ${r.wins}/${r.n} trận mẫu · tu luyện +${pct(r.R.biDong.toc_do || 0)} · đột phá +${pct(Math.min(0.12, r.R.biDong.dot_pha || 0), 1)} · điểm nghịch ${r.R.diemNghich || 0}</div>${drawGrid(nv, r.manh)}</div>`;
         body.querySelector('#vk-2o').innerHTML = box('Bộ 1 · Tu luyện', res.tu, 'dùng khi bế quan, đột phá', 0) + box('Bộ 2 · Đánh', res.danh, 'dùng khi ra ngoài đánh', 1)
           + `<div class="vk-mu" style="font-size:12px;margin-top:6px">Nút "Tự xếp" tự đổi sang bộ đó (game cần 1 chỗ trống trong túi để cất đồ bộ cũ) rồi xếp hộ. Bộ chưa mở thì phải mở trong game trước.</div>`;
         bindApply('vk-ap0', () => res.tu.manh, 0); bindApply('vk-ap1', () => res.danh.manh, 1);
@@ -885,11 +991,13 @@ const TOOL_VER = '2.2.0-km';
     };
   }
   async function optimizeMode(nv, mode, iters, prog, f0, f1, label) {
+    // Bộ tu luyện không theo lối tu / mức linh lực đánh nhau
+    if (mode === 'tu' && ((S.style && S.style !== 'auto') || (S.llp && S.llp !== 'min'))) { const o = [S.style, S.llp]; S.style = 'auto'; S.llp = 'min'; try { return await optimizeMode(nv, mode, iters, prog, f0, f1, label); } finally { [S.style, S.llp] = o; } }
     const nv0 = clone(nv); nv0.kinhMach.manh = [];
     const P = (a, b) => (f) => prog(f0 + (f1 - f0) * (a + (b - a) * f), label);
     P(0, 0)(0); const g0 = await greedy(nv0, mode);
-    const a = await anneal({ nv0, mode, iters: Math.round(iters * 0.6), init: g0, onProg: P(0.05, 0.55) });
-    const b = await anneal({ nv0, mode, iters: Math.round(iters * 0.5), init: a.manh, onProg: P(0.55, 1) });
+    const a = await anneal({ nv0, mode, iters: Math.round(iters * 0.5), init: g0, onProg: P(0.05, 0.55) });
+    const b = await anneal({ nv0, mode, iters: Math.round(iters * 0.3), init: a.manh, onProg: P(0.55, 1) });
     return stripDead(nv, [a, b].sort((x, y) => y.score - x.score)[0], mode);
   }
   // Tự xếp vào game bằng chính các thao tác của game (tháo / dời / đặt mảnh), có kiểm tra từng bước.
@@ -959,12 +1067,45 @@ const TOOL_VER = '2.2.0-km';
       b.disabled = false;
     };
   }
+  // Linh lực mỗi lượt so với phí các chiêu đang xếp
+  function llInfo(P) {
+    if (!P) return '';
+    const ll = P.linhLucMoiLuot || 0, mx = P.linhLucToiDa || 0;
+    const sk = (P.chieu || []).filter((x) => x.dang !== undefined && x.phi > 0).sort((a, b) => a.phi - b.phi);
+    if (!sk.length) return `<div class="vk-mu" style="font-size:12px;margin-top:6px">Linh lực hồi ${num(ll)}/lượt (tối đa ${num(mx)}). Chưa có chiêu tốn linh lực nào.</div>`;
+    let left = ll, n = 0; for (const x of sk) { if (left >= x.phi) { left -= x.phi; n++; } }
+    const ok = n >= Math.min(2, sk.length);
+    return `<div style="font-size:13px;margin-top:8px"><b>Linh lực:</b> hồi ${num(ll)}/lượt (tối đa ${num(mx)}, vào trận đầy trữ 3 lượt). Chiêu: ${sk.map((x) => `${esc(x.ten)} <span class="vk-mu">${num(x.phi, 0)}</span>`).join(', ')}. Mỗi lượt ra được <b class="${ok ? 'vk-ok' : 'vk-bad'}">${n}/${sk.length}</b> chiêu.</div>`;
+  }
+  const LOI_GHI = {
+    the: 'Cần ít nhất một tâm pháp luyện thể (nhãn thể) đang thông thì đồ thể tu mới đánh bằng sức thân.',
+    phat: 'Đồ Phật thiên về kháng tâm ma, chiêu thủ và khống chế: chậm mà chắc, đột phá ít hụt.',
+    kiem: 'Kiếm phần lớn hệ Kim. Thể chất Kiếm cốt hợp lối này.',
+    dan: 'Lối nghề: kinh mạch chỉ chọn đồ có nhãn đan; còn luyện đan cần đan lô và dị hỏa trong game.',
+    tran: 'Lối nghề: kinh mạch chỉ chọn đồ có nhãn trận; còn bày trận cần trận bàn và trận bút trong game.',
+    phu: 'Lối nghề: kinh mạch chỉ chọn đồ có nhãn phù; còn chế phù cần phù bút trong game.',
+    khi: 'Lối nghề: kinh mạch chỉ chọn đồ có nhãn khí; còn luyện bảo cần khí lô trong game.',
+  };
+  function loiInfo(nv, best) {
+    const st = S.style || 'auto'; if (!(st.startsWith('s:') || st.startsWith('e:'))) return '';
+    const K = S.core, Cc = C(), k = st.slice(2), ten = loiTen(st);
+    const bag = Object.keys(nv.tuiDo).filter((id) => nv.tuiDo[id] > 0).map((id) => Cc.items.get(id)).filter((it) => it && (it.loai === 'cong_phap' || it.loai === 'phap_khi') && it.hinh && loiMatch(st, it));
+    const nv2 = clone(nv); nv2.kinhMach.manh = best.manh; const g = K.xo(Cc, nv2);
+    let cells = 0, mcells = 0, mItems = 0;
+    (best.R.manh || []).forEach((rm, i) => { if (!rm || !rm.thong) return; const it = Cc.items.get(best.manh[i].item); const n = (K.al(g, best.manh[i], it) || []).length; cells += n; if (it && loiMatch(st, it)) { mcells += n; mItems++; } });
+    let h = `<div style="font-size:13px;margin-top:8px"><b>Lối ${esc(ten)}:</b> trong túi có ${bag.length} món hợp lối${bag.length ? ' (' + bag.slice(0, 6).map((it) => esc(it.ten)).join(', ') + (bag.length > 6 ? '…' : '') + ')' : ''}; cách xếp này dùng ${mItems} món hợp lối đang thông, chiếm ${cells ? Math.round(100 * mcells / cells) : 0}% số ô thông.`;
+    if (!bag.length) h += ' <span class="vk-bad">Chưa có đồ hợp lối nên kết quả giống cách xếp thường. Hãy mua hoặc tìm thêm đồ lối này (xem tab Nên mua).</span>';
+    if (st.startsWith('s:') && TA_DAO.includes(k)) h += `<br><span class="${cells && mcells / cells >= 1 / 3 ? 'vk-ok' : 'vk-bad'}">Tà đạo: mảnh tà cần chiếm từ 1/3 số ô thông thì lưới mới ngả tà.</span> Mang đồ tà vào đất chính đạo dễ bị nhận ra.`;
+    else if (LOI_GHI[k]) h += `<br><span class="vk-mu">${LOI_GHI[k]}</span>`;
+    return h + '</div>';
+  }
   function showBest(nv) {
     const { cur, best } = S.best; const out = body.querySelector('#vk-out');
     if (!out) return;
     out.innerHTML = (best.same ? '<div class="vk-ok" style="margin:6px 0">Cách đang xếp đã tốt nhất tool tìm được. Giữ nguyên như ảnh dưới (không cần xếp lại):</div>' + drawGrid(nv, best.manh) : '<div class="vk-ok" style="margin:6px 0">Xếp lại trong game theo ảnh dưới, hoặc bấm nút để tool tự xếp:</div>' + applyBtn('vk-ap', 'Tự xếp vào game') + drawGrid(nv, best.manh) + stepList(nv, best.manh, cur.manh)) + statRows(cur, best) +
       ((best.R && best.R.diemNghich) ? `<div class="vk-mu" style="font-size:12px;margin-top:6px">Cách này còn ${best.R.diemNghich} điểm nghịch (−${Math.min(15, 3 * best.R.diemNghich)}% tỉ lệ đột phá). Lúc chuẩn bị đột phá, chọn chế độ "Ưu tiên tu luyện / đột phá" để tool ưu tiên xóa điểm nghịch.</div>` : '') +
       '<div class="vk-mu" style="font-size:12px;margin-top:6px">Trận mẫu: 9 loại quái cùng cảnh giới với bạn, ở tiểu cảnh giới quanh mức của bạn (thấp hơn 1, bằng, cao hơn 1).</div>' + pieceTable(best.R) + sellAdvice(nv, best);
+    out.insertAdjacentHTML('beforeend', loiInfo(nv, best) + llInfo(best.P));
     bindApply('vk-ap', () => best.manh);
   }
   // Đồ công pháp/pháp khí không có mặt trong cách xếp tốt nhất → đề xuất bán
