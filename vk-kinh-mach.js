@@ -440,7 +440,7 @@ const TOOL_VER = '2.2.0-km';
   `;
   const style = document.createElement('style'); style.textContent = css; document.head.appendChild(style);
   const root = document.createElement('div'); root.id = 'vk-root';
-  root.innerHTML = `<div id="vk-hd"><b>Trợ lý Kinh mạch</b><button id="vk-sd" title="Đổi bên trái/phải">⇄</button><button id="vk-wd" title="Rộng/hẹp">↔</button><button id="vk-rf">Làm mới</button><button id="vk-mn" title="Thu nhỏ (giữ kết quả, game vẫn chơi được)">–</button><button id="vk-x">Đóng</button></div><div id="vk-body"></div>`;
+  root.innerHTML = `<div id="vk-hd"><b>Trợ lý Kinh mạch</b><span style="font-size:11px;opacity:.7;margin-left:6px">v2026.11.04</span><button id="vk-sd" title="Đổi bên trái/phải">⇄</button><button id="vk-wd" title="Rộng/hẹp">↔</button><button id="vk-rf">Làm mới</button><button id="vk-mn" title="Thu nhỏ (giữ kết quả, game vẫn chơi được)">–</button><button id="vk-x">Đóng</button></div><div id="vk-body"></div>`;
   document.body.appendChild(root);
   const fab = document.createElement('button'); fab.id = 'vk-fab'; fab.textContent = '助'; document.body.appendChild(fab);
   const body = root.querySelector('#vk-body');
