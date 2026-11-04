@@ -1,7 +1,7 @@
 // Trợ lý Kinh mạch — Vạn Kiếp Tu Tiên (bản tách riêng chỉ có phần kinh mạch).
-// Tách từ vk-tro-ly.js v2.2.0. Chỉ tính toán, không tự bấm, không gửi dữ liệu ra ngoài.
+// Tách từ vk-tro-ly.js v2.2.0. Chủ yếu tính toán; chỉ tự xếp kinh mạch khi bạn bấm nút. Không gửi dữ liệu của bạn ra ngoài (chỉ tải nhật ký cập nhật công khai của game).
 // Chạy trong trang game: tải lại code game thành bản sao để dùng hàm tính của chính game.
-const TOOL_VER = '2.2.0-km';
+const TOOL_VER = 'v2026.11.04';
 
 (() => {
   if (window.__vkKM) { window.__vkKM.show(); return; }
@@ -440,7 +440,7 @@ const TOOL_VER = '2.2.0-km';
   `;
   const style = document.createElement('style'); style.textContent = css; document.head.appendChild(style);
   const root = document.createElement('div'); root.id = 'vk-root';
-  root.innerHTML = `<div id="vk-hd"><b>Trợ lý Kinh mạch</b><span style="font-size:11px;opacity:.7;margin-left:6px">v2026.11.04</span><button id="vk-sd" title="Đổi bên trái/phải">⇄</button><button id="vk-wd" title="Rộng/hẹp">↔</button><button id="vk-rf">Làm mới</button><button id="vk-mn" title="Thu nhỏ (giữ kết quả, game vẫn chơi được)">–</button><button id="vk-x">Đóng</button></div><div id="vk-body"></div>`;
+  root.innerHTML = `<div id="vk-hd"><b>Trợ lý Kinh mạch</b><span style="font-size:11px;opacity:.7;margin-left:6px">${TOOL_VER}</span><button id="vk-sd" title="Đổi bên trái/phải">⇄</button><button id="vk-wd" title="Rộng/hẹp">↔</button><button id="vk-rf">Làm mới</button><button id="vk-mn" title="Thu nhỏ (giữ kết quả, game vẫn chơi được)">–</button><button id="vk-x">Đóng</button></div><div id="vk-body"></div>`;
   document.body.appendChild(root);
   const fab = document.createElement('button'); fab.id = 'vk-fab'; fab.textContent = '助'; document.body.appendChild(fab);
   const body = root.querySelector('#vk-body');
@@ -816,6 +816,42 @@ const TOOL_VER = '2.2.0-km';
       go.disabled = false;
     };
   }
+  // ───────────────────────── Cập nhật game ─────────────────────────
+  const CONTENT_URL = 'https://tu-tien-content.vuhaiquan2k1.workers.dev/v1/content';
+  const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* bỏ qua */ } };
+  async function layNhatKy() {
+    try { const r = await fetch(CONTENT_URL, { cache: 'no-store' }); if (r.ok) { const j = await r.json(); if (Array.isArray(j.nhatKy)) return { list: j.nhatKy, nguon: 'máy chủ game', capNhat: j.capNhat }; } } catch (e) { /* thử bản lưu trong trình duyệt */ }
+    try { const j = JSON.parse(lsGet('tu-tien.noi-dung-song') || 'null'); if (j && Array.isArray(j.nhatKy)) return { list: j.nhatKy, nguon: 'bản lưu trong trình duyệt', capNhat: j.capNhat }; } catch (e) { /* bỏ qua */ }
+    return null;
+  }
+  function renderUpdate() {
+    const box = body.querySelector('#vk-up'); if (!box) return;
+    const K = S.core, bundle = K.bundle || '?', last = lsGet('vkkm.bundle');
+    const ok = Object.keys(K).filter((k) => typeof K[k] === 'function' && !['Rt0'].includes(k));
+    const doi = last && last !== bundle;
+    let h = `<div class="vk-card"><h3>Tool và game</h3><table class="vk-t"><tr><td>Tool</td><td><b>${TOOL_VER}</b></td></tr><tr><td>File code game đang chạy</td><td><b>${esc(bundle)}</b></td></tr><tr><td>Hàm game tool đã nhận ra</td><td><b>${ok.length}</b> (${ok.map(esc).join(', ')})</td></tr></table>` +
+      (doi ? `<div class="vk-ok" style="margin-top:6px">Game vừa đổi file code (trước: ${esc(last)}). Tool đã dò lại được các hàm cần thiết.</div>` : '') +
+      `<div class="vk-mu" style="font-size:12px;margin-top:6px">Nếu tool báo "chưa nhận ra" sau khi game cập nhật, bấm nút dưới để sao chép báo cáo rồi dán cho Claude: đủ thông tin để sửa tool.</div></div><div class="vk-card"><h3>Nhật ký cập nhật của game</h3><div id="vk-upl" class="vk-mu">Đang tải…</div></div>`;
+    box.innerHTML = h;
+    lsSet('vkkm.bundle', bundle);
+    layNhatKy().then((r) => {
+      const el = box.querySelector('#vk-upl'); if (!el) return;
+      if (!r) { el.innerHTML = '<span class="vk-bad">Không tải được nhật ký. Hãy mở mục "Nhật ký cập nhật" trong game.</span>'; return; }
+      const seen = lsGet('vkkm.seen') || '';
+      const list = r.list.slice().sort((a, b) => String(b.ngay).localeCompare(String(a.ngay)));
+      const item = (e, open) => `<details ${open ? 'open' : ''} style="margin:6px 0"><summary><b>${esc(e.ngay)}</b> · ${esc(e.ten)}${String(e.ngay) > seen && seen ? ' <span class="vk-ok">mới</span>' : ''}</summary><ul style="margin:4px 0 4px 18px">${(e.muc || []).map((m) => `<li>${esc(m)}</li>`).join('')}</ul></details>`;
+      el.className = ''; el.innerHTML = `<div class="vk-mu" style="font-size:12px">Nguồn: ${r.nguon}${r.capNhat ? ' · cập nhật ' + esc(String(r.capNhat)) : ''}</div>` + list.slice(0, 3).map((e) => item(e, true)).join('') + (list.length > 3 ? `<details style="margin-top:6px"><summary class="vk-mu">Các bản cũ hơn (${list.length - 3})</summary>${list.slice(3).map((e) => item(e, false)).join('')}</details>` : '') +
+        '<button class="vk-btn" id="vk-upcp" style="margin-top:8px">Sao chép báo cáo cho Claude</button><div id="vk-upco" style="font-size:13px"></div>';
+      if (list[0]) lsSet('vkkm.seen', String(list[0].ngay));
+      const cp = el.querySelector('#vk-upcp'); if (!cp) return;
+      cp.onclick = async () => {
+        const txt = `Báo cáo tool ${TOOL_VER}\nFile code game: ${bundle}\nHàm nhận ra: ${ok.join(', ')}\nNhật ký game gần nhất:\n` + list.slice(0, 3).map((e) => `- ${e.ngay} ${e.ten}: ${(e.muc || []).join(' | ')}`).join('\n');
+        let done = false; try { await navigator.clipboard.writeText(txt); done = true; } catch (e) { /* hiện hộp để tự chép */ }
+        el.querySelector('#vk-upco').innerHTML = done ? '<span class="vk-ok">Đã sao chép. Dán vào khung chat với Claude.</span>' : `<textarea readonly style="width:100%;height:120px;margin-top:6px">${esc(txt)}</textarea>`;
+      };
+    });
+  }
   function renderBiCanh() {
     const box = body.querySelector('#vk-bc'); if (!box) return;
     const K = S.core, Cc = C(), g = G(), run = g.state.run, world = g.env && g.env.world;
@@ -867,7 +903,7 @@ const TOOL_VER = '2.2.0-km';
     const nv = nvNow(), c0 = C();
     const tac = nv.kinhMach.trangThai.map((s, i) => (s === 'tac' ? i : -1)).filter((i) => i >= 0);
     const mo = (nv.kinhMach.cho && nv.kinhMach.cho.mo) || 0;
-    const KT = [['cur', 'Hiện tại'], ['opt', 'Xếp tối ưu'], ['buy', 'Nên mua'], ['cat', 'Danh mục'], ['ev', 'Sự kiện'], ['bc', 'Bí cảnh'], ['nt', 'Bản mệnh']];
+    const KT = [['cur', 'Hiện tại'], ['opt', 'Xếp tối ưu'], ['buy', 'Nên mua'], ['cat', 'Danh mục'], ['ev', 'Sự kiện'], ['bc', 'Bí cảnh'], ['nt', 'Bản mệnh'], ['up', 'Cập nhật']];
     S.kt = S.kt || 'opt';
     body.innerHTML = `
     <div class="vk-card" style="margin-bottom:8px"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:14px">Mục tiêu:</b> <select class="vk-sel" id="vk-mode"><option value="bal">Cân bằng (đánh + tu luyện)</option><option value="danh">Ưu tiên đánh nhau</option><option value="tu">Ưu tiên tu luyện / đột phá</option></select></div><label style="display:flex;gap:6px;align-items:center;margin-top:6px;font-size:13px"><input type="checkbox" id="vk-lt" ${S.lt ? 'checked' : ''}> Tính khi đã lĩnh ngộ xong (xếp lâu dài)</label><div class="vk-mu" style="font-size:12px;margin-top:4px">Áp dụng cho Xếp tối ưu, Nên mua và Thử món ở Danh mục. Bỏ tick = tính theo sức hiện tại (món mới chỉ 50%).</div></div>
@@ -915,6 +951,7 @@ const TOOL_VER = '2.2.0-km';
     <section data-ks="ev"><div id="vk-ev"></div></section>
     <section data-ks="bc"><div id="vk-bc"></div></section>
     <section data-ks="nt"><div id="vk-nt"></div></section>
+    <section data-ks="up"><div id="vk-up"></div></section>
     <section data-ks="cat">
     <div class="vk-card"><h3>Danh mục món theo cảnh giới</h3>
       <div class="vk-mu" style="font-size:13px">Xem công pháp, đấu pháp, pháp khí theo từng cảnh giới, sắp theo thứ bạn cần. "Mạnh nhất" là điểm ước tính từ số liệu gốc của món, chưa tính chỗ đặt. Bấm "Thử trên kinh mạch của tôi" ở món nào để biết nó hợp kinh mạch hiện tại không (dùng chế độ ở khối "Xếp kinh mạch tối ưu").</div>
@@ -958,6 +995,7 @@ const TOOL_VER = '2.2.0-km';
     try { renderEvent(nv); } catch (e) { console.error(e); body.querySelector('#vk-ev').innerHTML = errBox(e); }
     try { renderBiCanh(); } catch (e) { console.error(e); body.querySelector('#vk-bc').innerHTML = errBox(e); }
     try { renderNatal(nv); } catch (e) { console.error(e); body.querySelector('#vk-nt').innerHTML = errBox(e); }
+    try { renderUpdate(); } catch (e) { console.error(e); body.querySelector('#vk-up').innerHTML = errBox(e); }
     body.querySelector('#vk-2b').onclick = async (ev) => {
       ev.target.disabled = true; S.abort = false;
       const prog = bindProgress(body.querySelector('#vk-pr2b'));
