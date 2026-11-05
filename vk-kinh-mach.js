@@ -80,7 +80,12 @@ const TOOL_VER = 'v2026.11.04';
     let ok1 = false, ok2 = false;
     src = src.replace(/((?:[\w$]+\(\);)*)const ([\w$]+)=[\w$]+\.createRoot\(document\.getElementById\("hud"\)\)/, (_, __, v) => { ok1 = true; return `const ${v}={render(){}}`; });
     src = src.replace(/(__tuTienReady:!0\}\)\})([\w$]+)\(\)\.catch\(/, (_, a) => { ok2 = true; return a + 'Promise.resolve().catch('; });
-    if (!ok1 || !ok2) throw new Error('Game vừa đổi cách khởi động nên tool chưa chạy được. Hãy chụp màn hình này gửi Claude để sửa tool.');
+    if (!ok1 || !ok2) {
+      const ctx = (re, a, b) => { const i = src.search(re); return i < 0 ? '(không thấy)' : src.slice(Math.max(0, i - a), i + b); };
+      const dg = '[' + url.split('/').pop() + '] createRoot=' + ok1 + ' ready=' + ok2 + '\nA: ' + ctx(/createRoot\(/, 120, 160) + '\nB: ' + ctx(/__tuTienReady/, 120, 200);
+      try { window.__vkDiag = dg; console.log(dg); } catch (e) {}
+      throw new Error('Game vừa đổi cách khởi động nên tool chưa chạy được. Hãy chụp màn hình này gửi Claude để sửa tool.\n' + dg);
+    }
     src = src.replace(/window\.addEventListener\("contextmenu",/, 'void("contextmenu",');
     src += `\n;export const __VKT={${Object.entries(names).map(([k, v]) => k + ':' + v).join(',')}};`;
     progress('Đang dựng bộ tính toán…');
