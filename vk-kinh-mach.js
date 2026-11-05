@@ -1,7 +1,7 @@
 // Trợ lý Kinh mạch — Vạn Kiếp Tu Tiên (bản tách riêng chỉ có phần kinh mạch).
 // Tách từ vk-tro-ly.js v2.2.0. Chủ yếu tính toán; chỉ tự xếp kinh mạch khi bạn bấm nút. Không gửi dữ liệu của bạn ra ngoài (chỉ tải nhật ký cập nhật công khai của game).
 // Chạy trong trang game: tải lại code game thành bản sao để dùng hàm tính của chính game.
-const TOOL_VER = 'v2026.11.04';
+const TOOL_VER = 'v2026.11.06';
 
 (() => {
   if (window.__vkKM) { window.__vkKM.show(); return; }
@@ -80,6 +80,9 @@ const TOOL_VER = 'v2026.11.04';
     let ok1 = false, ok2 = false;
     src = src.replace(/((?:[\w$]+\(\);)*)const ([\w$]+)=[\w$]+\.createRoot\(document\.getElementById\("hud"\)\)/, (_, __, v) => { ok1 = true; return `const ${v}={render(){}}`; });
     src = src.replace(/(__tuTienReady:!0\}\)\})([\w$]+)\(\)\.catch\(/, (_, a) => { ok2 = true; return a + 'Promise.resolve().catch('; });
+    if (!ok2) src = src.replace(/([\w$]+)\(\)\.catch\((?=\w=>\{(?:var \w;)?console\.error\(\w\),Object\.assign\(window,\{__tuTienReady:!0\}\))/, () => { ok2 = true; return 'Promise.resolve().catch('; });
+    // Bản game mới: lệnh khởi động nằm cuối file, ngay trước phần xử lý lỗi đặt cờ sẵn sàng
+    if (!ok2) src = src.replace(/([\w$]+)\(\)\.catch\((\w+)=>\{var (\w+);console\.error\(\2\),Object\.assign\(window,\{__tuTienReady:!0\}\)/, (_, f, e, t) => { ok2 = true; return `Promise.resolve().catch(${e}=>{var ${t};console.error(${e}),Object.assign(window,{__tuTienReady:!0})`; });
     if (!ok1 || !ok2) {
       const ctx = (re, a, b) => { const i = src.search(re); return i < 0 ? '(không thấy)' : src.slice(Math.max(0, i - a), i + b); };
       const dg = '[' + url.split('/').pop() + '] createRoot=' + ok1 + ' ready=' + ok2 + '\nA: ' + ctx(/createRoot\(/, 120, 160) + '\nB: ' + ctx(/__tuTienReady/, 120, 200);
