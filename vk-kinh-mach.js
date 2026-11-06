@@ -1,7 +1,7 @@
 // Trợ lý Kinh mạch — Vạn Kiếp Tu Tiên (bản tách riêng chỉ có phần kinh mạch).
 // Tách từ vk-tro-ly.js v2.2.0. Chủ yếu tính toán; chỉ tự xếp kinh mạch khi bạn bấm nút. Không gửi dữ liệu của bạn ra ngoài (chỉ tải nhật ký cập nhật công khai của game).
 // Chạy trong trang game: tải lại code game thành bản sao để dùng hàm tính của chính game.
-const TOOL_VER = 'v2026.11.06';
+const TOOL_VER = 'v2026.11.07';
 
 (() => {
   if (window.__vkKM) { window.__vkKM.show(); return; }
@@ -791,9 +791,10 @@ const TOOL_VER = 'v2026.11.06';
     const pool = Object.keys(nv.tuiDo).filter((id) => nv.tuiDo[id] > 0).map((id) => Cc.items.get(id)).filter((it) => it && it.loai === 'phap_khi');
     const rows = pool.map((it) => { let err = null, cost = null; try { err = K.I8(nv, it); } catch (e) { err = 'không rõ'; } try { cost = K.kv(nv, it); } catch (e) { /* bỏ qua */ } return { it, err, cost }; }).filter((x) => x.cost);
     rows.sort((a, b) => (b.it.pham_cap || 0) - (a.it.pham_cap || 0));
-    const top = rows.slice(0, 6);
-    h += `<div class="vk-mu" style="font-size:13px;margin-top:8px">Chưa có bản mệnh. Tool thử từng pháp khí trong túi (tối đa 6 món phẩm cao nhất): cho món đó làm bản mệnh, xếp lại kinh mạch bằng đồ còn lại, rồi so điểm với cách xếp hiện tại. Chỉ tính lúc mới tế luyện (tâm huyết 0, chưa khắc văn).</div>
-      <button class="vk-btn" id="vk-ntgo" ${top.length ? '' : 'disabled'}>So sánh các món làm bản mệnh</button>${progressHtml('vk-ntpr')}<div id="vk-nto">${top.length ? '' : '<div class="vk-mu" style="margin-top:6px">Trong túi chưa có pháp khí nào để tế luyện.</div>'}</div></div>`;
+    const okRows = rows.filter((x) => !x.err), noRows = rows.filter((x) => x.err);
+    const top = okRows.slice(0, 8);
+    h += `<div class="vk-mu" style="font-size:13px;margin-top:8px">Chưa có bản mệnh. Tool thử từng pháp khí trong túi mà bạn đủ điều kiện tế luyện (tối đa 8 món phẩm cao nhất): cho món đó làm bản mệnh, xếp lại kinh mạch bằng đồ còn lại, rồi so điểm với cách xếp hiện tại. Chỉ tính lúc mới tế luyện (tâm huyết 0, chưa khắc văn).</div>
+      <button class="vk-btn" id="vk-ntgo" ${top.length ? '' : 'disabled'}>So sánh các món làm bản mệnh</button>${progressHtml('vk-ntpr')}<div id="vk-nto">${top.length ? '' : `<div class="vk-mu" style="margin-top:6px">${noRows.length ? 'Chưa có pháp khí nào đủ điều kiện tế luyện.' : 'Trong túi chưa có pháp khí nào để tế luyện.'}</div>`}${noRows.length ? `<div class="vk-mu" style="font-size:12px;margin-top:6px">Chưa tế luyện được: ${noRows.slice(0, 8).map((x) => `${esc(x.it.ten)} (${esc(x.err)})`).join('; ')}</div>` : ''}</div></div>`;
     box.innerHTML = h;
     const go = box.querySelector('#vk-ntgo'); if (!go) return;
     go.onclick = async () => {
@@ -815,7 +816,7 @@ const TOOL_VER = 'v2026.11.06';
         box.querySelector('#vk-ntpr').style.display = 'none';
         const best = res[0];
         let html = '';
-        if (best && best.gain > 1) html += `<div class="vk-ok" style="margin:6px 0">Món lợi nhất làm bản mệnh: <b>${esc(best.it.ten)}</b> (điểm +${Math.round(best.gain)} so với không có bản mệnh).</div>`;
+        if (best && best.gain > 1) html += `<div class="vk-card" style="border-color:#1a7f37;border-width:2px;margin:6px 0"><span class="vk-ok">★ Nên dùng làm bản mệnh:</span> <b>${esc(best.it.ten)}</b><div style="font-size:13px;margin-top:3px">Điểm +${Math.round(best.gain)} so với không có bản mệnh · khiếu bẩm sinh: ${esc(vanTen(K.rS(best.it)))} · tốn ${num(best.cost.essence, 0)} năm thọ + ${num(best.cost.stone, 0)} linh thạch, thất bại ${best.cost.failPercent}%.${res[1] && res[1].gain > 1 && best.gain - res[1].gain < 3 ? ` Món <b>${esc(res[1].it.ten)}</b> gần ngang; chọn món rẻ hơn nếu muốn tiết kiệm.` : ''}</div></div>`;
         else html += '<div class="vk-mu" style="margin:6px 0">Với đồ hiện có, làm bản mệnh chưa thấy lợi hơn giữ nguyên. Cân nhắc khi có pháp khí tốt hơn.</div>';
         html += `<table class="vk-t"><tr><th>Pháp khí</th><th>Thắng</th><th>Lợi</th><th>Chi phí tế luyện</th></tr>` + res.map((x) => `<tr><td><b>${esc(x.it.ten)}</b><br><span class="vk-mu" style="font-size:12px">phẩm ${PHAM[x.it.pham_cap || 0] || ''}${x.err ? ' · <span class="vk-bad">' + esc(x.err) + '</span>' : ''}</span></td><td>${x.r.wins}/${x.r.n}</td><td>${x.gain > 1 ? '<span class="vk-ok">+' + Math.round(x.gain) + '</span>' : x.gain < -1 ? '<span class="vk-bad">' + Math.round(x.gain) + '</span>' : '<span class="vk-mu">≈0</span>'}</td><td style="font-size:13px">${num(x.cost.essence, 0)} năm thọ · ${num(x.cost.stone, 0)} linh thạch · thất bại ${x.cost.failPercent}%${x.cost.years ? ' · mất ' + num(x.cost.years, 1) + ' năm' : ''}</td></tr>`).join('') + '</table>' +
           '<div class="vk-mu" style="font-size:12px;margin-top:6px">Thất bại: món vẫn còn nhưng hao khoảng một nửa số năm thọ ghi ở trên (theo hằng số của game). "Lợi" là chênh điểm tool chấm khi mới tế luyện; bản mệnh còn mạnh lên nhờ tâm huyết và văn nên về lâu dài có thể hơn. Món đang đặt trên kinh mạch phải gỡ ra trước khi tế luyện.</div>';
