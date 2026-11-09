@@ -1,7 +1,7 @@
 // Trợ lý Kinh mạch — Vạn Kiếp Tu Tiên (bản tách riêng chỉ có phần kinh mạch).
 // Tách từ vk-tro-ly.js v2.2.0. Chủ yếu tính toán; chỉ tự xếp kinh mạch khi bạn bấm nút. Không gửi dữ liệu của bạn ra ngoài (chỉ tải nhật ký cập nhật công khai của game).
 // Chạy trong trang game: tải lại code game thành bản sao để dùng hàm tính của chính game.
-const TOOL_VER = 'v2026.11.12';
+const TOOL_VER = 'v2026.11.13';
 
 (() => {
   if (window.__vkKM) { window.__vkKM.show(); return; }
@@ -26,6 +26,10 @@ const TOOL_VER = 'v2026.11.12';
     I8: [/function ([\w$]+)\(\w,\w\)\{if\(\w\.natal\)return"Đã có bản mệnh\. Hóa bản mệnh cũ trước\."/, 'điều kiện bản mệnh'],
     rS: [/function ([\w$]+)\(\w\)\{const \w=\w\.chieu;if\(!\w\)return [\w$]+\(\w\);const \w=new Set\(\(\w\.effects\?\?\[\]\)/, 'khiếu bản mệnh'],
     IP: [/function ([\w$]+)\(\w,\w,\w,\w=0\)\{return [\w$]+\(\w,\w,\w,\w,[\w$]+\(\w,\w,"sell",\w\)\)\}/, 'giá bán'],
+    Xa: [/function ([\w$]+)\(\w,\w\)\{return [\w$]+\([\w$]+\(\w,\w\)\)\*\(1\+\(\w\.tucTue\?\?0\)\)\*/, 'tốc độ tu luyện'],
+    Sn: [/function ([\w$]+)\(\w,\w\)\{return Math\.round\([\w$]+\(\w\)\.tuViMoiTieu\*\(1\+[\w$]+\*\w\)\)\}/, 'tu vi mỗi tiểu cảnh giới'],
+    fiGet: [/TU_VI_MOI_NAM:\w=>\{([\w$]+)=\w\}/, 'tu vi mỗi năm'],
+    bpGet: [/HE_SO_TU_VI_SU_KIEN:\w=>\{([\w$]+)=\w\}/, 'hệ số tu vi sự kiện'],
   };
 
   function findFn(src, anchor) {
@@ -90,7 +94,7 @@ const TOOL_VER = 'v2026.11.12';
       throw new Error('Game vừa đổi cách khởi động nên tool chưa chạy được. Hãy chụp màn hình này gửi Claude để sửa tool.\n' + dg);
     }
     src = src.replace(/window\.addEventListener\("contextmenu",/, 'void("contextmenu",');
-    src += `\n;export const __VKT={${Object.entries(names).map(([k, v]) => k + ':' + v).join(',')}};`;
+    src += `\n;export const __VKT={${Object.entries(names).map(([k, v]) => k + ':' + (/Get$/.test(k) ? `(()=>${v})` : v)).join(',')}};`;
     progress('Đang dựng bộ tính toán…');
     const blobUrl = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
     const mod = await import(blobUrl);
@@ -679,7 +683,7 @@ const TOOL_VER = 'v2026.11.12';
       entries = [...ids].filter((id) => { const d = Cc.encounters && Cc.encounters.get(id); return d && d.choices && d.choices.length; }).map((id) => ({ id, vars: {}, pending: true }));
     }
     if (!entries.length) { box.innerHTML = '<div class="vk-card">Không có sự kiện nào đang hiện hoặc đang chờ ở nơi này. Khi gặp sự kiện có lựa chọn, mở tab này rồi bấm <b>Làm mới</b>.</div>'; return; }
-    const goalCard = `<div class="vk-card" style="margin-bottom:8px"><b style="font-size:14px">Ưu tiên:</b> <select class="vk-sel" id="vk-eg"><option value="tu" ${(S.evGoal || 'tu') === 'tu' ? 'selected' : ''}>Tu vi và chỉ số</option><option value="an" ${S.evGoal === 'an' ? 'selected' : ''}>An toàn</option><option value="tai" ${S.evGoal === 'tai' ? 'selected' : ''}>Tài nguyên (linh thạch, món)</option></select><div class="vk-mu" style="font-size:12px;margin-top:4px">★ Gợi ý là lựa chọn có điểm kỳ vọng cao nhất theo mục tiêu. Hệ số điểm do mình đặt, chỉ để xếp hạng tương đối, đừng xem là chân lý.</div></div>`;
+    const goalCard = `<div class="vk-card" style="margin-bottom:8px"><b style="font-size:14px">Ưu tiên:</b> <select class="vk-sel" id="vk-eg"><option value="tu" ${(S.evGoal || 'tu') === 'tu' ? 'selected' : ''}>Tu vi và chỉ số</option><option value="an" ${S.evGoal === 'an' ? 'selected' : ''}>An toàn</option><option value="tai" ${S.evGoal === 'tai' ? 'selected' : ''}>Tài nguyên (linh thạch, món)</option></select><div class="vk-mu" style="font-size:12px;margin-top:4px">★ Gợi ý là lựa chọn có điểm kỳ vọng cao nhất theo mục tiêu. Tu vi được quy đổi bằng công thức thật của game (tốc độ tu luyện, lịch luyện) ra số năm tu luyện tương đương; hệ số cho từng chỉ số là do mình đặt (căn cốt nặng nhất), chỉ để xếp hạng tương đối.</div></div>`;
     box.innerHTML = goalCard + entries.map((a, i) => { try { return oneEvent(a, i); } catch (er) { console.error(er); return errBox(er); } }).join('') + '<div class="vk-mu" style="font-size:12px">Trận đánh được mô phỏng bằng bộ tính của game với chỉ số hiện tại. Một số kết quả có yếu tố ngẫu nhiên nên chỉ là dự đoán.</div>';
     const sg = box.querySelector('#vk-eg'); if (sg) sg.onchange = () => { S.evGoal = sg.value; renderEvent(nv); };
     function oneEvent(act, idx) {
@@ -691,24 +695,41 @@ const TOOL_VER = 'v2026.11.12';
     let P = null; const getP = () => P || (P = K.Vr(clone(nv), Cc));
     const clean = (t) => String(t || '').replace(/\{[^}]*\}/g, '…').replace(/\s+/g, ' ').trim();
     const wpMap = new WeakMap(), goal = S.evGoal || 'tu';
+    // Quy đổi tu vi của sự kiện ra số liệu thật của game: tu vi nhận = giá trị × (tu vi mỗi năm) × (hệ số sự kiện) × (tốc độ tu luyện); sau đó lịch luyện cạn thì bị giảm.
+    const tvInfo = (raw) => {
+      if (typeof raw !== 'number' || !(raw > 0)) return null;
+      let fi = 5, bp = 2, exact = false, spd = null;
+      try { if (K.fiGet && K.bpGet) { fi = K.fiGet(); bp = K.bpGet(); exact = true; } } catch (er) { /* dùng mặc định */ }
+      try { if (K.Xa) spd = K.Xa(nv, Cc); } catch (er) { spd = null; }
+      if (!(spd > 0)) return null;
+      let need = null; try { if (K.Sn) need = K.Sn(nv.canhGioi, nv.tieuCanhGioi || 0); } catch (er) { /* bỏ qua */ }
+      const full = raw * fi * bp * spd, years = raw * bp;
+      let got = full, trimmed = false;
+      try {
+        const f0 = K.Sn ? K.Sn(nv.canhGioi, 0) / 8 : 0, ll = nv.lichLuyen ?? 10;
+        if (f0 > 0) { const used = full / f0; if (used > ll) { got = Math.min(ll, used) * f0 + (full - Math.min(ll, used) * f0) * 0.3; trimmed = true; } }
+      } catch (er) { /* bỏ qua */ }
+      return { full, got, years: years * (got / full), yearsFull: years, pct: need ? got / need : null, trimmed, exact };
+    };
+    const SW = { can_cot: 10, dao_tam: 6, khi_van: 6, ngo_tinh: 6, than_thuc: 5, than_phap: 4 };
     const GWS = { tu: { stat: 4, tuvi: 3, lt: .2, bac: 3, item: 5, inj: -30, lose: -60, time: -10, an: 10, oan: -15, tm: -8, ch: .5 }, an: { stat: 3, tuvi: 1, lt: .2, bac: 3, item: 4, inj: -60, lose: -100, time: -5, an: 10, oan: -25, tm: -12, ch: .5 }, tai: { stat: 2, tuvi: 1, lt: .6, bac: 10, item: 8, inj: -30, lose: -60, time: -8, an: 8, oan: -15, tm: -8, ch: 1.5 } };
     // Điểm kỳ vọng của một danh sách hiệu ứng theo mục tiêu (hệ số do mình đặt, chỉ để xếp hạng tương đối)
     const score = (list) => { const g = GWS[goal]; let wp = 1, t = 0;
       for (const e of list || []) {
         const f = e.if === 'won' ? wp : e.if === 'lost' ? 1 - wp : e.if ? .5 : 1;
         if (e.combat !== undefined) { wp = wpMap.has(e) ? wpMap.get(e) : .5; t += wp * 5 + (1 - wp) * g.lose; continue; }
-        if (e.stat) for (const [k, v] of Object.entries(e.stat)) t += f * v * (k === 'tam_ma' ? g.tm : g.stat);
+        if (e.stat) for (const [k, v] of Object.entries(e.stat)) t += f * v * (k === 'tam_ma' ? g.tm : (goal === 'tu' && SW[k]) || g.stat);
         if (e.linh_thach !== undefined) t += f * (typeof e.linh_thach === 'number' ? e.linh_thach * g.lt : (e.linh_thach && e.linh_thach.bac || 0) * g.bac);
         if (e.add_item !== undefined) { const it = Cc.items.get(rs(e.add_item)); t += f * ((it && it.pham_cap) || 1) * g.item; }
         if (e.injury) t += f * e.injury * g.inj;
         if (e.time) t += f * e.time * g.time;
         if (e.plant_seed) t += f * (e.plant_seed.loai === 'an_nghia' ? g.an : e.plant_seed.loai === 'oan_han' ? g.oan : 0);
-        if (e.tu_vi) t += f * e.tu_vi * g.tuvi;
+        if (e.tu_vi) { const ti = tvInfo(e.tu_vi); t += f * (ti ? ti.years * (goal === 'tu' ? 2.5 : 1) : e.tu_vi * g.tuvi); }
         if (e.cong_hien) t += f * e.cong_hien * g.ch;
         if (e.tam_ma) t += f * e.tam_ma * g.tm;
         if (typeof e.tho_nguyen === 'number') t += f * e.tho_nguyen * (goal === 'an' ? 6 : 3);
-        if (typeof e.dao_tam === 'number') t += f * e.dao_tam * g.stat;
-        if (typeof e.khi_van === 'number') t += f * e.khi_van * g.stat;
+        if (typeof e.dao_tam === 'number') t += f * e.dao_tam * (goal === 'tu' ? SW.dao_tam : g.stat);
+        if (typeof e.khi_van === 'number') t += f * e.khi_van * (goal === 'tu' ? SW.khi_van : g.stat);
         if (typeof e.heal === 'number') t += f * e.heal * -g.inj * .5;
         if (e.linh_ngo) { const it = Cc.items.get(rs(e.linh_ngo)); t += f * ((it && it.pham_cap) || 1) * g.item * .6; }
         if (e.remove_item) { const it = Cc.items.get(rs(e.remove_item)); t -= f * ((it && it.pham_cap) || 1) * g.item * .6; }
@@ -745,7 +766,8 @@ const TOOL_VER = 'v2026.11.12';
       if (e.time) out.push(`mất ${e.time} năm`);
       if (e.plant_seed) out.push(SEED[e.plant_seed.loai] || 'gieo duyên ' + esc(e.plant_seed.loai));
       if (e.goto_scene && e.goto_scene !== 'start') { const sc = def.scenes && def.scenes[e.goto_scene]; out.push('mở tiếp: ' + esc(clean(sc && sc.text).slice(0, 70))); }
-      for (const k of ['tu_vi', 'cong_hien', 'tuoi', 'tho_nguyen', 'tam_ma']) if (e[k] !== undefined) { if (e[k] < 0) flag.bad++; out.push(`${k.replace('_', ' ')} <b>${e[k] > 0 ? '+' : ''}${esc(JSON.stringify(e[k]))}</b>`); }
+      if (typeof e.tu_vi === 'number') { const ti = tvInfo(e.tu_vi); if (ti) out.push(`tu vi <b class="vk-ok">+${Math.round(ti.got).toLocaleString('vi-VN')}</b> <span class="vk-mu">(≈ ${num(ti.years, 1)} năm tu luyện${ti.pct !== null ? ` · ${Math.round(ti.pct * 100)}% một tiểu cảnh giới` : ''})</span>${ti.trimmed ? ' <span class="vk-bad">lịch luyện còn ít nên bị giảm</span>' : ''}`); }
+      for (const k of ['tu_vi', 'cong_hien', 'tuoi', 'tho_nguyen', 'tam_ma']) if (e[k] !== undefined && !(k === 'tu_vi' && typeof e.tu_vi === 'number' && tvInfo(e.tu_vi))) { if (e[k] < 0) flag.bad++; out.push(`${k.replace('_', ' ')} <b>${e[k] > 0 ? '+' : ''}${esc(JSON.stringify(e[k]))}</b>`); }
       const sg = (v) => (v > 0 ? '+' : '') + v, cl = (v) => (v < 0 ? 'vk-bad' : 'vk-ok'), nm = (id) => { const r = rs(id); return typeof r === 'string' && !/^\{/.test(r) ? ((Cc.items.get(r) || Cc.npc && Cc.npc.get && Cc.npc.get(r) || {}).ten || r) : '…'; };
       if (typeof e.dao_tam === 'number') { if (e.dao_tam < 0) flag.bad++; out.push(`đạo tâm <b class="${cl(e.dao_tam)}">${sg(e.dao_tam)}</b>`); }
       if (typeof e.khi_van === 'number') { if (e.khi_van < 0) flag.bad++; out.push(`khí vận <b class="${cl(e.khi_van)}">${sg(e.khi_van)}</b>`); }
@@ -770,6 +792,36 @@ const TOOL_VER = 'v2026.11.12';
       if (e.fail_chain) out.push('chuỗi sự kiện thất bại');
       return out.length ? `<li>${pre}${out.join('; ')}</li>` : '';
     }).join('');
+    // Kỳ vọng thưởng của một lựa chọn (đã nhân xác suất thắng / thành công), để so sánh nhanh
+    const tally = (list, w, acc) => {
+      let wp = 1;
+      for (const e of list || []) {
+        if (e.combat !== undefined) { wp = wpMap.has(e) ? wpMap.get(e) : .5; continue; }
+        const f = (e.if === 'won' ? wp : e.if === 'lost' ? 1 - wp : e.if ? .5 : 1) * w;
+        if (e.stat) for (const [k, v] of Object.entries(e.stat)) acc.st[k] = (acc.st[k] || 0) + f * v;
+        for (const k of ['dao_tam', 'khi_van']) if (typeof e[k] === 'number') acc.st[k] = (acc.st[k] || 0) + f * e[k];
+        if (typeof e.tam_ma === 'number') acc.st.tam_ma = (acc.st.tam_ma || 0) + f * e.tam_ma;
+        if (typeof e.tu_vi === 'number') { const ti = tvInfo(e.tu_vi); if (ti) { acc.years += f * ti.years; acc.pct += f * (ti.pct || 0); } }
+        if (typeof e.linh_thach === 'number') acc.lt += f * e.linh_thach;
+        if (e.add_item !== undefined) acc.items += f;
+        if (e.injury) acc.inj += f * e.injury;
+        if (typeof e.time === 'number') acc.time += f * e.time;
+      }
+    };
+    const sumTxt = (c) => {
+      const acc = { st: {}, years: 0, pct: 0, lt: 0, items: 0, inj: 0, time: 0 };
+      tally(c.effects, 1, acc);
+      if (c.check) { const pr0 = prob(c.check), p = pr0 === null ? .5 : pr0, pp = c.partial ? (1 - p) * .35 * Math.min(1, 2 * p) : 0; tally(c.success, p, acc); tally(c.partial, pp, acc); tally(c.failure, 1 - p - pp, acc); }
+      const parts = [];
+      if (acc.years > 0.05) parts.push(`tu vi ≈ <b class="vk-ok">${num(acc.years, 1)} năm</b> tu luyện${acc.pct > 0.005 ? ` (${Math.round(acc.pct * 100)}% một tiểu cảnh giới)` : ''}`);
+      const st = Object.entries(acc.st).filter(([, v]) => Math.abs(v) >= 0.05).map(([k, v]) => `${CSN[k] || k} <b class="${(k === 'tam_ma' ? v > 0 : v < 0) ? 'vk-bad' : 'vk-ok'}">${v > 0 ? '+' : ''}${num(v, 1)}</b>`);
+      if (st.length) parts.push(st.join(', '));
+      if (Math.abs(acc.lt) >= 1) parts.push(`linh thạch ${acc.lt > 0 ? '+' : ''}${Math.round(acc.lt)}`);
+      if (acc.items >= 0.05) parts.push(`~${num(acc.items, 1)} món`);
+      if (acc.inj > 0.05) parts.push(`<span class="vk-bad">thương ≈ ${num(acc.inj, 1)} bậc</span>`);
+      if (Math.abs(acc.time) >= 0.05) parts.push(`${acc.time > 0 ? 'mất' : 'được'} ${num(Math.abs(acc.time), 1)} năm`);
+      return parts.length ? `<div style="font-size:13px;margin:3px 0;padding:4px 6px;background:#f7f0df;border-radius:4px"><b>Kỳ vọng:</b> ${parts.join(' · ')}</div>` : '';
+    };
     const prob = (chk) => { try { return S.core.xI ? S.core.xI(ctx(), chk) : null; } catch (er) { return null; } };
     const cx = (() => { try { const x = ctx(); if (!x.enc) x.enc = { id: act.id, slot: run0.viTri, vars: act.vars || {} }; return x; } catch (er) { return null; } })();
     const unmetOf = (c) => { try { if (!cx) return null; if (c.hien_khi && K.At && !K.At(c.hien_khi, cx)) return 'ẩn với bạn lúc này'; if (c.requires && K.Om) return K.Om(c.requires, cx) || ''; return ''; } catch (er) { return null; } };
@@ -793,7 +845,8 @@ const TOOL_VER = 'v2026.11.12';
       let evs = score(c.effects);
       if (c.check) { const pr0 = prob(c.check), p = pr0 === null ? .5 : pr0, pp = c.partial ? (1 - p) * .35 * Math.min(1, 2 * p) : 0; evs += p * score(c.success) + pp * score(c.partial) + (1 - p - pp) * score(c.failure); }
       let pTxt = ''; if (c.check) { const pq = prob(c.check); pTxt = pq === null ? '' : Math.round(pq * 100) + '%'; }
-      return { i, c, h, tag, evs, unmet: !!unmet, bad: flag.bad, pTxt };
+      let sumH = ''; try { sumH = sumTxt(c); } catch (er) { console.warn(er); }
+      return { i, c, h, tag, evs, unmet: !!unmet, bad: flag.bad, pTxt, sumH };
     });
     const okRows = rows.filter((x) => !x.unmet), pool = okRows.length ? okRows : rows;
     const bestEv = Math.max(...pool.map((x) => x.evs)), nBest = pool.filter((x) => bestEv - x.evs < 2).length;
@@ -801,7 +854,7 @@ const TOOL_VER = 'v2026.11.12';
     const bestRow = pool.find((x) => x.evs === bestEv);
     const worst = pool.filter((x) => x.bad && x !== bestRow && x.evs < bestEv - 20);
     const verdict = rows.length > 1 ? `<div class="vk-card" style="border-color:#1a7f37;margin:6px 0"><b>Kết luận:</b> ${nBest === 1 ? `nên chọn <b>${bestRow.i + 1}. ${esc(bestRow.c.text)}</b>${bestRow.pTxt ? ` (thành công khoảng ${bestRow.pTxt})` : ''}${second ? `, hơn lựa chọn kế tiếp ${Math.round(bestEv - second.evs)} điểm` : ''}${bestRow.bad ? ', nhưng <span class="vk-bad">vẫn có rủi ro</span>' : ', không có rủi ro đáng kể'}.` : `có ${nBest} lựa chọn ngang nhau (${pool.filter((x) => bestEv - x.evs < 2).map((x) => x.i + 1).join(', ')}); chọn theo sở thích.`}${worst.length ? ` Nên tránh: ${worst.map((x) => x.i + 1).join(', ')} (rủi ro cao, điểm thấp).` : ''}${okRows.length < rows.length ? ` Có ${rows.length - okRows.length} lựa chọn bạn chưa dùng được (đã loại khỏi gợi ý).` : ''}</div>` : '';
-    const rowsH = rows.map((x) => { const star = x.unmet ? '<span class="vk-bad">không chọn được</span> ' : x.evs === bestEv && nBest === 1 ? '<span class="vk-ok">★ Gợi ý</span> ' : (bestEv - x.evs < 2 && nBest > 1 && !x.unmet ? '<span class="vk-mu">≈ ngang nhau</span> ' : ''); return `<div class="vk-card"${star.includes('Gợi ý') ? ' style="border-color:#1a7f37;border-width:2px"' : ''}><div style="display:flex;justify-content:space-between;gap:8px"><b>${x.i + 1}. ${esc(x.c.text)}</b><span style="font-size:13px">${x.tag}</span></div><div style="font-size:12px;margin:2px 0">${star}<span class="vk-mu">điểm ${Math.round(x.evs)}</span></div>${x.h}</div>`; }).join('');
+    const rowsH = rows.map((x) => { const star = x.unmet ? '<span class="vk-bad">không chọn được</span> ' : x.evs === bestEv && nBest === 1 ? '<span class="vk-ok">★ Gợi ý</span> ' : (bestEv - x.evs < 2 && nBest > 1 && !x.unmet ? '<span class="vk-mu">≈ ngang nhau</span> ' : ''); return `<div class="vk-card"${star.includes('Gợi ý') ? ' style="border-color:#1a7f37;border-width:2px"' : ''}><div style="display:flex;justify-content:space-between;gap:8px"><b>${x.i + 1}. ${esc(x.c.text)}</b><span style="font-size:13px">${x.tag}</span></div><div style="font-size:12px;margin:2px 0">${star}<span class="vk-mu">điểm ${Math.round(x.evs)}</span></div>${x.sumH || ''}${x.h}</div>`; }).join('');
     return `<details class="vk-card" ${idx === 0 || !act.pending ? 'open' : ''}><summary><b>${esc(def.ten || act.id)}</b> <span class="vk-mu" style="font-size:12px">${act.pending ? '(đang chờ ở đây)' : '(đang diễn ra)'}${def.tien_ich ? ' · tiện ích' : ''}${def.mat_bi ? ' · ẩn' : ''}</span></summary><div class="vk-mu" style="font-size:13px;margin:6px 0">${esc(clean(scene ? scene.text : def.text).slice(0, 220))}</div>` + verdict + (rowsH || '<div class="vk-mu">Sự kiện này không có lựa chọn.</div>') + '</details>';
     }
   }
