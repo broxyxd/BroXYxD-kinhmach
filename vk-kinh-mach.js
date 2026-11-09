@@ -1,7 +1,7 @@
 // Trợ lý Kinh mạch — Vạn Kiếp Tu Tiên (bản tách riêng chỉ có phần kinh mạch).
 // Tách từ vk-tro-ly.js v2.2.0. Chủ yếu tính toán; chỉ tự xếp kinh mạch khi bạn bấm nút. Không gửi dữ liệu của bạn ra ngoài (chỉ tải nhật ký cập nhật công khai của game).
 // Chạy trong trang game: tải lại code game thành bản sao để dùng hàm tính của chính game.
-const TOOL_VER = 'v2026.11.07';
+const TOOL_VER = 'v2026.11.09';
 
 (() => {
   if (window.__vkKM) { window.__vkKM.show(); return; }
@@ -807,19 +807,27 @@ const TOOL_VER = 'v2026.11.07';
         for (let k = 0; k < top.length && !S.abort; k++) {
           const { it, err, cost } = top[k], id = it.id;
           const nvC = clone(nv0); nvC.tuiDo[id] = (nvC.tuiDo[id] || 1) - 1; if (nvC.tuiDo[id] <= 0) delete nvC.tuiDo[id];
-          const p = Math.max(1, Math.min(8, it.pham_cap ?? 2));
+          const p = Math.max(1, Math.min(7, it.pham_cap ?? 2));
           nvC.natal = { item: id, base: p, grade: p, exp: 0, innate: { id: K.rS(it), level: 0, points: 0 }, runes: [] };
-          const r = await anneal({ nv0: nvC, mode, iters: 700, init: base.manh.filter((m) => m.item !== id), onProg: (f) => prog((k + 1 + f) / (top.length + 1), `Thử ${esc(it.ten)}…`) });
-          res.push({ it, err, cost, r, gain: r.score - base.score });
+          const r = await anneal({ nv0: nvC, mode, iters: 700, init: base.manh.filter((m) => m.item !== id), onProg: (f) => prog((k + 1 + f) / (top.length + 3), `Thử ${esc(it.ten)}…`) });
+          res.push({ it, err, cost, r, gain: r.score - base.score, p });
         }
         res.sort((a, b) => b.gain - a.gain);
+        // Tiềm năng: game cho nâng tối đa +2 giai so với phẩm gốc (không quá phẩm 7), nên thử luôn mức đó cho 3 món đầu
+        for (let k = 0; k < Math.min(3, res.length) && !S.abort; k++) {
+          const x = res[k], gmax = Math.min(7, x.p + 2); if (gmax <= x.p) continue;
+          const nvC = clone(nv0); nvC.tuiDo[x.it.id] = (nvC.tuiDo[x.it.id] || 1) - 1; if (nvC.tuiDo[x.it.id] <= 0) delete nvC.tuiDo[x.it.id];
+          nvC.natal = { item: x.it.id, base: x.p, grade: gmax, exp: 150, innate: { id: K.rS(x.it), level: 0, points: 0 }, runes: [] };
+          const r2 = await anneal({ nv0: nvC, mode, iters: 700, init: x.r.manh.filter((m) => m.item !== x.it.id), onProg: (f) => prog((top.length + 1 + k + f) / (top.length + 3), `Tiềm năng ${esc(x.it.ten)}…`) });
+          x.gmax = gmax; x.gain2 = r2.score - base.score;
+        }
         box.querySelector('#vk-ntpr').style.display = 'none';
         const best = res[0];
         let html = '';
         if (best && best.gain > 1) html += `<div class="vk-card" style="border-color:#1a7f37;border-width:2px;margin:6px 0"><span class="vk-ok">★ Nên dùng làm bản mệnh:</span> <b>${esc(best.it.ten)}</b><div style="font-size:13px;margin-top:3px">Điểm +${Math.round(best.gain)} so với không có bản mệnh · khiếu bẩm sinh: ${esc(vanTen(K.rS(best.it)))} · tốn ${num(best.cost.essence, 0)} năm thọ + ${num(best.cost.stone, 0)} linh thạch, thất bại ${best.cost.failPercent}%.${res[1] && res[1].gain > 1 && best.gain - res[1].gain < 3 ? ` Món <b>${esc(res[1].it.ten)}</b> gần ngang; chọn món rẻ hơn nếu muốn tiết kiệm.` : ''}</div></div>`;
         else html += '<div class="vk-mu" style="margin:6px 0">Với đồ hiện có, làm bản mệnh chưa thấy lợi hơn giữ nguyên. Cân nhắc khi có pháp khí tốt hơn.</div>';
-        html += `<table class="vk-t"><tr><th>Pháp khí</th><th>Thắng</th><th>Lợi</th><th>Chi phí tế luyện</th></tr>` + res.map((x) => `<tr><td><b>${esc(x.it.ten)}</b><br><span class="vk-mu" style="font-size:12px">phẩm ${PHAM[x.it.pham_cap || 0] || ''}${x.err ? ' · <span class="vk-bad">' + esc(x.err) + '</span>' : ''}</span></td><td>${x.r.wins}/${x.r.n}</td><td>${x.gain > 1 ? '<span class="vk-ok">+' + Math.round(x.gain) + '</span>' : x.gain < -1 ? '<span class="vk-bad">' + Math.round(x.gain) + '</span>' : '<span class="vk-mu">≈0</span>'}</td><td style="font-size:13px">${num(x.cost.essence, 0)} năm thọ · ${num(x.cost.stone, 0)} linh thạch · thất bại ${x.cost.failPercent}%${x.cost.years ? ' · mất ' + num(x.cost.years, 1) + ' năm' : ''}</td></tr>`).join('') + '</table>' +
-          '<div class="vk-mu" style="font-size:12px;margin-top:6px">Thất bại: món vẫn còn nhưng hao khoảng một nửa số năm thọ ghi ở trên (theo hằng số của game). "Lợi" là chênh điểm tool chấm khi mới tế luyện; bản mệnh còn mạnh lên nhờ tâm huyết và văn nên về lâu dài có thể hơn. Món đang đặt trên kinh mạch phải gỡ ra trước khi tế luyện.</div>';
+        html += `<table class="vk-t"><tr><th>Pháp khí</th><th>Thắng</th><th>Lợi</th><th>Nếu nâng hết giai</th><th>Chi phí tế luyện</th></tr>` + res.map((x) => `<tr><td><b>${esc(x.it.ten)}</b><br><span class="vk-mu" style="font-size:12px">phẩm ${PHAM[x.it.pham_cap || 0] || ''}${x.err ? ' · <span class="vk-bad">' + esc(x.err) + '</span>' : ''}</span></td><td>${x.r.wins}/${x.r.n}</td><td>${x.gain > 1 ? '<span class="vk-ok">+' + Math.round(x.gain) + '</span>' : x.gain < -1 ? '<span class="vk-bad">' + Math.round(x.gain) + '</span>' : '<span class="vk-mu">≈0</span>'}</td><td style="font-size:13px">${x.gain2 !== undefined ? `${PHAM[x.p] || x.p} → ${PHAM[x.gmax] || x.gmax}: ${x.gain2 > 1 ? '<span class="vk-ok">+' + Math.round(x.gain2) + '</span>' : x.gain2 < -1 ? '<span class="vk-bad">' + Math.round(x.gain2) + '</span>' : '≈0'}` : '<span class="vk-mu">—</span>'}</td><td style="font-size:13px">${num(x.cost.essence, 0)} năm thọ · ${num(x.cost.stone, 0)} linh thạch · thất bại ${x.cost.failPercent}%${x.cost.years ? ' · mất ' + num(x.cost.years, 1) + ' năm' : ''}</td></tr>`).join('') + '</table>' +
+          '<div class="vk-mu" style="font-size:12px;margin-top:6px">Thất bại: món vẫn còn nhưng hao khoảng một nửa số năm thọ ghi ở trên (theo hằng số của game). "Lợi" là chênh điểm tool chấm khi mới tế luyện; bản mệnh còn mạnh lên nhờ tâm huyết và văn nên về lâu dài có thể hơn. Cột "Nếu nâng hết giai" tính khi bản mệnh đã Viên mãn và nâng tối đa +2 giai (phẩm kế tiếp cần cảnh giới đủ cao, mỗi lần nâng tốn thọ nguyên và linh thạch, có thể thất bại); chỉ tính cho 3 món đầu. Món đang đặt trên kinh mạch phải gỡ ra trước khi tế luyện.</div>';
         out.innerHTML = html;
       } catch (e) { console.error(e); out.innerHTML = errBox(e); }
       go.disabled = false;
