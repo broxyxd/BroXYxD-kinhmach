@@ -1,7 +1,7 @@
 // Trợ lý Kinh mạch — Vạn Kiếp Tu Tiên (bản tách riêng chỉ có phần kinh mạch).
 // Tách từ vk-tro-ly.js v2.2.0. Chủ yếu tính toán; chỉ tự xếp kinh mạch khi bạn bấm nút. Không gửi dữ liệu của bạn ra ngoài (chỉ tải nhật ký cập nhật công khai của game).
 // Chạy trong trang game: tải lại code game thành bản sao để dùng hàm tính của chính game.
-const TOOL_VER = 'v2026.11.09';
+const TOOL_VER = 'v2026.11.10';
 
 (() => {
   if (window.__vkKM) { window.__vkKM.show(); return; }
@@ -298,12 +298,12 @@ const TOOL_VER = 'v2026.11.09';
     return cur.map((p) => ({ ...p.m }));
   }
 
-  async function anneal({ nv0, mode, iters, init, onProg, label }) {
+  async function anneal({ nv0, mode, iters, init, onProg, label, seed: seed0 }) {
     const enemies = benchEnemies(nv0.canhGioi, nv0.tieuCanhGioi || 0);
     const ev = makeEval(nv0, enemies, mode);
     const { cand } = buildCandidates(nv0);
     const ids = Object.keys(cand).filter((k) => cand[k].length);
-    let seed = 12345; const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+    let seed = seed0 || 12345; const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
     const overlaps = (manh, c, skip = -1) => { const used = new Set(); manh.forEach((p, i) => { if (i !== skip) p.cells.forEach((x) => used.add(x)); }); return c.cells.some((x) => used.has(x)); };
     let lastY = performance.now(), cur = [];
     if (init) for (const m of init) { const c = (cand[m.item] || []).find((c) => c.m.x === m.x && c.m.y === m.y && c.m.xoay === m.xoay); if (c && !overlaps(cur, c)) cur.push(c); }
@@ -326,6 +326,38 @@ const TOOL_VER = 'v2026.11.09';
     }
     const e = ev(best, true);
     return { manh: best.map((p) => ({ ...p.m })), score: e.s, wins: e.wins, n: enemies.length, P: e.P, R: e.R };
+  }
+
+  // Mài lần cuối: thử có hệ thống mọi nước đi nhỏ (bỏ món, dời món sang chỗ khác, thêm món còn thừa) cho tới khi không còn nước nào tốt hơn.
+  // Làm bước này giúp kết quả ổn định, không phụ thuộc may rủi của lần chạy.
+  async function polish({ nv0, mode, start, budget, onProg }) {
+    const enemies = benchEnemies(nv0.canhGioi, nv0.tieuCanhGioi || 0);
+    const ev = makeEval(nv0, enemies, mode);
+    const { cand } = buildCandidates(nv0);
+    const ids = Object.keys(cand).filter((k) => cand[k].length);
+    const overlaps = (manh, c, skip = -1) => { const used = new Set(); manh.forEach((p, i) => { if (i !== skip) p.cells.forEach((x) => used.add(x)); }); return c.cells.some((x) => used.has(x)); };
+    let cur = [];
+    for (const m of start) { const c = (cand[m.item] || []).find((c) => c.m.x === m.x && c.m.y === m.y && c.m.xoay === m.xoay); if (c && !overlaps(cur, c)) cur.push(c); }
+    let curS = ev(cur, true).s, used = 0, lastY = performance.now(), improved = true;
+    const tryNext = (next) => { used++; const e = ev(next); if (e.s > curS + 1e-9) { cur = next; curS = e.s; improved = true; return true; } return false; };
+    for (let round = 0; round < 6 && improved && used < budget && !S.abort; round++) {
+      improved = false;
+      for (let i = cur.length - 1; i >= 0 && used < budget && !S.abort; i--) {
+        if (i >= cur.length) continue;
+        if (tryNext(cur.filter((_, j) => j !== i))) continue;
+        const id = cur[i].m.item;
+        for (const c of cand[id]) { if (c === cur[i] || overlaps(cur, c, i)) continue; const next = cur.slice(); next[i] = c; if (tryNext(next)) break; if (used >= budget) break; }
+        if (performance.now() - lastY > 40) { onProg && onProg(Math.min(1, used / budget)); await sleep0(); lastY = performance.now(); }
+      }
+      for (const id of ids) {
+        if (used >= budget || S.abort) break;
+        if (cur.some((p) => p.m.item === id)) continue;
+        for (const c of cand[id]) { if (overlaps(cur, c)) continue; if (tryNext([...cur, c])) break; if (used >= budget) break; }
+        if (performance.now() - lastY > 40) { onProg && onProg(Math.min(1, used / budget)); await sleep0(); lastY = performance.now(); }
+      }
+    }
+    const e = ev(cur, true);
+    return { manh: cur.map((p) => ({ ...p.m })), score: e.s, wins: e.wins, n: enemies.length, P: e.P, R: e.R };
   }
 
   // Bỏ khỏi cách xếp mọi món không thông (không có tác dụng gì), rồi chấm lại.
@@ -993,11 +1025,14 @@ const TOOL_VER = 'v2026.11.09';
         const cur = evalCurrent(nv, mode);
         prog(0.02, 'Xếp nhanh…');
         const g0 = await greedy(nv0, mode);
-        const a = await anneal({ nv0, mode, iters: Math.round(iters * 0.5), init: g0, onProg: (f) => prog(0.05 + f * 0.35, 'Tìm từ bản xếp nhanh…') });
-        const a2 = await anneal({ nv0, mode, iters: Math.round(iters * 0.4), init: null, onProg: (f) => prog(0.4 + f * 0.3, 'Tìm từ đầu…') });
-        const top = [a, a2, cur].sort((x, y) => y.score - x.score)[0];
-        const b = await anneal({ nv0, mode, iters: Math.round(iters * 0.3), init: top.manh, onProg: (f) => prog(0.7 + f * 0.3, 'Đang tinh chỉnh…') });
-        let best = [a, a2, b].sort((x, y) => y.score - x.score)[0];
+        const a = await anneal({ nv0, mode, iters: Math.round(iters * 0.35), init: g0, onProg: (f) => prog(0.05 + f * 0.25, 'Tìm từ bản xếp nhanh…') });
+        const a2 = await anneal({ nv0, mode, iters: Math.round(iters * 0.3), init: null, seed: 98765, onProg: (f) => prog(0.3 + f * 0.2, 'Tìm từ đầu…') });
+        const a3 = nv.kinhMach.manh && nv.kinhMach.manh.length ? await anneal({ nv0, mode, iters: Math.round(iters * 0.2), init: nv.kinhMach.manh, seed: 777, onProg: (f) => prog(0.5 + f * 0.1, 'Cải tiến từ cách đang xếp…') }) : a2;
+        const top = [a, a2, a3, cur].sort((x, y) => y.score - x.score)[0];
+        const b = await anneal({ nv0, mode, iters: Math.round(iters * 0.2), init: top.manh, seed: 4242, onProg: (f) => prog(0.6 + f * 0.15, 'Đang tinh chỉnh…') });
+        const top2 = [top, b].sort((x, y) => y.score - x.score)[0];
+        const c = await polish({ nv0, mode, start: top2.manh, budget: Math.round(iters * 0.7), onProg: (f) => prog(0.75 + f * 0.25, 'Mài lần cuối…') });
+        let best = [a, a2, a3, b, c].sort((x, y) => y.score - x.score)[0];
         best = stripDead(nv, best, mode);
         if (cur.score >= best.score && !(cur.R.manh || []).some((m) => m && !m.thong)) best = { ...cur, same: true };
         S.best = { nvKey: JSON.stringify([nv.tuiDo, nv.kinhMach.trangThai, nv.canhGioi, nv.tieuCanhGioi]), cur, best, mode };
@@ -1063,9 +1098,14 @@ const TOOL_VER = 'v2026.11.09';
     const nv0 = clone(nv); nv0.kinhMach.manh = [];
     const P = (a, b) => (f) => prog(f0 + (f1 - f0) * (a + (b - a) * f), label);
     P(0, 0)(0); const g0 = await greedy(nv0, mode);
-    const a = await anneal({ nv0, mode, iters: Math.round(iters * 0.5), init: g0, onProg: P(0.05, 0.55) });
-    const b = await anneal({ nv0, mode, iters: Math.round(iters * 0.3), init: a.manh, onProg: P(0.55, 1) });
-    return stripDead(nv, [a, b].sort((x, y) => y.score - x.score)[0], mode);
+    // Nhiều điểm xuất phát: (1) xếp tham lam, (2) cách đang xếp trong game, (3) làm lại từ đầu với hạt giống khác
+    const a = await anneal({ nv0, mode, iters: Math.round(iters * 0.35), init: g0, onProg: P(0.02, 0.35) });
+    const cands = [a];
+    if (nv.kinhMach.manh && nv.kinhMach.manh.length) cands.push(await anneal({ nv0, mode, iters: Math.round(iters * 0.15), init: nv.kinhMach.manh, seed: 777, onProg: P(0.35, 0.5) }));
+    const b0 = cands.sort((x, y) => y.score - x.score)[0];
+    const b1 = await anneal({ nv0, mode, iters: Math.round(iters * 0.15), init: b0.manh, seed: 4242, onProg: P(0.5, 0.75) });
+    const b = await polish({ nv0, mode, start: (b1.score >= b0.score ? b1 : b0).manh, budget: Math.round(iters * 0.7), onProg: P(0.75, 1) });
+    return stripDead(nv, [a, b0, b1, b].sort((x, y) => y.score - x.score)[0], mode);
   }
   // Tự xếp vào game bằng chính các thao tác của game (tháo / dời / đặt mảnh), có kiểm tra từng bước.
   function applyLayout(target, loadout) {
@@ -1169,7 +1209,8 @@ const TOOL_VER = 'v2026.11.09';
   function showBest(nv) {
     const { cur, best } = S.best; const out = body.querySelector('#vk-out');
     if (!out) return;
-    out.innerHTML = (best.same ? '<div class="vk-ok" style="margin:6px 0">Cách đang xếp đã tốt nhất tool tìm được. Giữ nguyên như ảnh dưới (không cần xếp lại):</div>' + drawGrid(nv, best.manh) : '<div class="vk-ok" style="margin:6px 0">Xếp lại trong game theo ảnh dưới, hoặc bấm nút để tool tự xếp:</div>' + applyBtn('vk-ap', 'Tự xếp vào game') + drawGrid(nv, best.manh) + stepList(nv, best.manh, cur.manh)) + statRows(cur, best) +
+    const dScore = best.score - cur.score, cmp = best.same ? '' : `<div class="vk-card" style="margin:6px 0"><b>So với cách đang xếp:</b> điểm ${Math.round(cur.score)} → <b>${Math.round(best.score)}</b> (${dScore >= 1 ? '<span class="vk-ok">+' + Math.round(dScore) + '</span>' : '<span class="vk-mu">gần như ngang nhau</span>'}) · thắng trận mẫu ${cur.wins}/${cur.n} → <b>${best.wins}/${best.n}</b>${dScore < 1 ? '. Chênh lệch nhỏ nên không cần tốn công xếp lại.' : ''}<div class="vk-mu" style="font-size:12px;margin-top:3px">Điểm là thước đo của tool (đánh 9 loại quái mẫu + tốc độ tu luyện + ổn định); chỉ dùng để so sánh các cách xếp với nhau.</div></div>`;
+    out.innerHTML = cmp + (best.same ? '<div class="vk-ok" style="margin:6px 0">Cách đang xếp đã tốt nhất tool tìm được. Giữ nguyên như ảnh dưới (không cần xếp lại):</div>' + drawGrid(nv, best.manh) : '<div class="vk-ok" style="margin:6px 0">Xếp lại trong game theo ảnh dưới, hoặc bấm nút để tool tự xếp:</div>' + applyBtn('vk-ap', 'Tự xếp vào game') + drawGrid(nv, best.manh) + stepList(nv, best.manh, cur.manh)) + statRows(cur, best) +
       ((best.R && best.R.diemNghich) ? `<div class="vk-mu" style="font-size:12px;margin-top:6px">Cách này còn ${best.R.diemNghich} điểm nghịch (−${Math.min(15, 3 * best.R.diemNghich)}% tỉ lệ đột phá). Lúc chuẩn bị đột phá, chọn chế độ "Ưu tiên tu luyện / đột phá" để tool ưu tiên xóa điểm nghịch.</div>` : '') +
       '<div class="vk-mu" style="font-size:12px;margin-top:6px">Trận mẫu: 9 loại quái cùng cảnh giới với bạn, ở tiểu cảnh giới quanh mức của bạn (thấp hơn 1, bằng, cao hơn 1).</div>' + pieceTable(best.R) + sellAdvice(nv, best);
     out.insertAdjacentHTML('beforeend', loiInfo(nv, best) + llInfo(best.P));
