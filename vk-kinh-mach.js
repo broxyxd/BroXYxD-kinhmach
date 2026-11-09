@@ -1,7 +1,7 @@
 // Trợ lý Kinh mạch — Vạn Kiếp Tu Tiên (bản tách riêng chỉ có phần kinh mạch).
 // Tách từ vk-tro-ly.js v2.2.0. Chủ yếu tính toán; chỉ tự xếp kinh mạch khi bạn bấm nút. Không gửi dữ liệu của bạn ra ngoài (chỉ tải nhật ký cập nhật công khai của game).
 // Chạy trong trang game: tải lại code game thành bản sao để dùng hàm tính của chính game.
-const TOOL_VER = 'v2026.11.11';
+const TOOL_VER = 'v2026.11.12';
 
 (() => {
   if (window.__vkKM) { window.__vkKM.show(); return; }
@@ -850,7 +850,7 @@ const TOOL_VER = 'v2026.11.11';
         for (let k = 0; k < Math.min(3, res.length) && !S.abort; k++) {
           const x = res[k], gmax = Math.min(7, x.p + 2); if (gmax <= x.p) continue;
           const nvC = clone(nv0); nvC.tuiDo[x.it.id] = (nvC.tuiDo[x.it.id] || 1) - 1; if (nvC.tuiDo[x.it.id] <= 0) delete nvC.tuiDo[x.it.id];
-          nvC.natal = { item: x.it.id, base: x.p, grade: gmax, exp: 150, innate: { id: K.rS(x.it), level: 0, points: 0 }, runes: [] };
+          nvC.natal = { item: x.it.id, base: x.p, grade: gmax, exp: 1e6, innate: { id: K.rS(x.it), level: 0, points: 0 }, runes: [] };
           const r2 = await anneal({ nv0: nvC, mode, iters: 700, init: x.r.manh.filter((m) => m.item !== x.it.id), onProg: (f) => prog((top.length + 1 + k + f) / (top.length + 3), `Tiềm năng ${esc(x.it.ten)}…`) });
           x.gmax = gmax; x.gain2 = r2.score - base.score;
         }
