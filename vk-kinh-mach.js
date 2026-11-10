@@ -1,7 +1,7 @@
 // Trợ lý Kinh mạch — Vạn Kiếp Tu Tiên (bản tách riêng chỉ có phần kinh mạch).
 // Tách từ vk-tro-ly.js v2.2.0. Chủ yếu tính toán; chỉ tự xếp kinh mạch khi bạn bấm nút. Không gửi dữ liệu của bạn ra ngoài (chỉ tải nhật ký cập nhật công khai của game).
 // Chạy trong trang game: tải lại code game thành bản sao để dùng hàm tính của chính game.
-const TOOL_VER = 'v2026.11.14';
+const TOOL_VER = 'v2026.11.15';
 
 (() => {
   if (window.__vkKM) { window.__vkKM.show(); return; }
@@ -169,6 +169,19 @@ const TOOL_VER = 'v2026.11.14';
   // st: 's:the' (lối theo nhãn) hoặc 'e:kim' (theo hệ linh căn)
   const loiMatch = (st, it) => st.startsWith('s:') ? schoolsOf(it).includes(st.slice(2)) : (it.he || []).includes(st.slice(2));
   const loiTen = (st) => st.startsWith('s:') ? ((LOI.find((l) => l[0] === st.slice(2)) || [])[1] || st) : (heTen(st.slice(2)) + ' tu');
+  // Linh lực cần mỗi lượt để ra liên tục các chiêu "đáng ra" của lối tu: mặc định 2 chiêu công mạnh nhất; lối khống chế → chiêu khống chế; lối hồi phục / thủ → chiêu hồi phục + chiêu công mạnh nhất.
+  // Chiêu hồi chiêu k lượt chỉ ra 1 lần mỗi k+1 lượt nên chi phí mỗi lượt = phí / (1 + k).
+  const llSus = (x) => x.phi / (1 + (x.hoi > 0 ? x.hoi : 0));
+  function llTarget(P, st) {
+    const sk = (P.chieu || []).filter((x) => x.dang !== undefined && x.phi > 0);
+    const byUy = (a, b) => (b.uy || 0) - (a.uy || 0);
+    const cong = sk.filter((x) => x.dang === 'cong').sort(byUy), khong = sk.filter((x) => x.dang === 'khong_che').sort(byUy), hoi = sk.filter((x) => x.dang === 'hoi_phuc' || x.dang === 'thu').sort(byUy);
+    let pick;
+    if (st === 'khong' && khong.length) pick = [...khong.slice(0, 1), ...cong.slice(0, 1)];
+    else if (st === 'hoi' && hoi.length) pick = [...hoi.slice(0, 1), ...cong.slice(0, 1)];
+    else pick = cong.length ? cong.slice(0, 2) : sk.slice().sort(byUy).slice(0, 2);
+    return pick;
+  }
   function makeEval(nv0, enemies, mode) {
     const K = S.core, c = C();
     // Dùng chung bộ nhớ đệm giữa các lần tìm có cùng kinh mạch, nhân vật và chế độ (bỏ qua túi đồ: chỉ cách xếp mới đổi kết quả)
@@ -189,17 +202,17 @@ const TOOL_VER = 'v2026.11.14';
       const atk = (P.chieu || []).filter((x) => x.dang && x.phi > 0).map((x) => x.phi);
       const minCost = atk.length ? Math.min(...atk) : 0;
       const dead = R.manh.filter((m) => m && !m.thong).length;
-      const wLL = mode === 'tu' ? 1 : mode === 'danh' ? 5 : 4, lp = 'min';
-      const sus = (x) => x.phi / (1 + (x.hoi > 0 ? x.hoi : 0)); // linh lực cần mỗi lượt để ra chiêu đó liên tục (chiêu hồi chiêu k lượt chỉ ra 1 lần mỗi k+1 lượt)
+      const wLL = mode === 'tu' ? 1 : mode === 'danh' ? 5 : 4;
+      // Bộ tu luyện: chỉ cần đủ ra chiêu rẻ nhất. Bộ đánh / cân bằng: nhắm mức linh lực để ra liên tục chiêu chủ lực của lối tu,
+      // nhưng không đòi quá mức đồ trong rương có thể đạt (trần = 85% mức linh lực cao nhất đã thấy khi tìm), để không hy sinh chỉ số khác vì một mục tiêu không thể với tới.
+      cache.nEv = (cache.nEv || 0) + 1; if (cache.nEv <= 200) cache.llMax = Math.max(cache.llMax || 0, ll); // chốt mức trần sau 200 lần chấm đầu để điểm không bị đổi giữa chừng
       let req = minCost;
-      if (lp !== 'min') {
-        const sk = (P.chieu || []).filter((x) => x.dang !== undefined && x.phi > 0);
-        const cong = sk.filter((x) => x.dang === 'cong').sort((a, b) => (b.uy || 0) - (a.uy || 0));
-        const pl = cong.length ? cong : sk.slice().sort((a, b) => (b.uy || 0) - (a.uy || 0));
-        req = !sk.length ? 0 : lp === 'one' ? sus(pl[0]) : (lp === 'two' || lp === 'auto') ? pl.slice(0, 2).reduce((a, x) => a + sus(x), 0) : sk.reduce((a, x) => a + sus(x), 0);
+      if (mode !== 'tu') {
+        const tg = llTarget(P, S.style || 'auto');
+        const want = tg.reduce((a, x) => a + llSus(x), 0);
+        req = Math.max(minCost, Math.min(want, 0.85 * cache.llMax));
       }
-      // 'min': đủ chiêu rẻ nhất; các mức khác: đủ số chiêu muốn ra mỗi lượt, dư linh lực thì chỉ còn thưởng nhẹ
-      const llScore = lp === 'min' ? wLL * ll - (minCost && ll < minCost ? 30 : 0) - 8 * dead
+      const llScore = mode === 'tu' ? wLL * ll - (minCost && ll < minCost ? 30 : 0) - 8 * dead
         : wLL * Math.min(ll, req) + 0.25 * wLL * Math.max(0, ll - req) - (req && ll < req ? 30 + 12 * (req - ll) : 0) - 8 * dead;
       // Lối tu: thưởng theo chỉ số hợp lối (so với mức đầu tiên gặp, tối đa gấp 3)
       let sb = 0; const st = S.style || 'auto';
@@ -1236,7 +1249,9 @@ const TOOL_VER = 'v2026.11.14';
     if (!sk.length) return `<div class="vk-mu" style="font-size:12px;margin-top:6px">Linh lực hồi ${num(ll)}/lượt (tối đa ${num(mx)}). Chưa có chiêu tốn linh lực nào.</div>`;
     let left = ll, n = 0; for (const x of sk) { if (left >= x.phi) { left -= x.phi; n++; } }
     const ok = n >= Math.min(2, sk.length);
-    return `<div style="font-size:13px;margin-top:8px"><b>Linh lực:</b> hồi ${num(ll)}/lượt (tối đa ${num(mx)}, vào trận đầy trữ 3 lượt). Chiêu: ${sk.map((x) => `${esc(x.ten)} <span class="vk-mu">${num(x.phi, 0)}</span>`).join(', ')}. Mỗi lượt ra được <b class="${ok ? 'vk-ok' : 'vk-bad'}">${n}/${sk.length}</b> chiêu.</div>`;
+    const tg = llTarget(P, S.style || 'auto'), need = tg.reduce((a, x) => a + llSus(x), 0);
+    const verdict = need ? ` Chiêu chủ lực (${tg.map((x) => esc(x.ten)).join(', ')}) cần khoảng <b>${num(need, 0)}</b> linh lực/lượt để ra liên tục: ${ll >= need * 1.5 ? '<b class="vk-mu">dư khá nhiều</b>' : ll >= need ? '<b class="vk-ok">vừa đủ</b>' : `<b class="vk-bad">thiếu ${num(need - ll, 0)}/lượt</b> (vào trận đầy trữ 3 lượt nên đầu trận vẫn ổn)`}.` : '';
+    return `<div style="font-size:13px;margin-top:8px"><b>Linh lực:</b> hồi ${num(ll)}/lượt (tối đa ${num(mx)}, vào trận đầy trữ 3 lượt). Chiêu: ${sk.map((x) => `${esc(x.ten)} <span class="vk-mu">${num(x.phi, 0)}</span>`).join(', ')}. Mỗi lượt ra được <b class="${ok ? 'vk-ok' : 'vk-bad'}">${n}/${sk.length}</b> chiêu.${verdict}</div>`;
   }
   const LOI_GHI = {
     the: 'Cần ít nhất một tâm pháp luyện thể (nhãn thể) đang thông thì đồ thể tu mới đánh bằng sức thân.',
