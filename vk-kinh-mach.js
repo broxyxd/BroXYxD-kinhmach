@@ -1,7 +1,7 @@
 // Trợ lý Kinh mạch — Vạn Kiếp Tu Tiên (bản tách riêng chỉ có phần kinh mạch).
 // Tách từ vk-tro-ly.js v2.2.0. Chủ yếu tính toán; chỉ tự xếp kinh mạch khi bạn bấm nút. Không gửi dữ liệu của bạn ra ngoài (chỉ tải nhật ký cập nhật công khai của game).
 // Chạy trong trang game: tải lại code game thành bản sao để dùng hàm tính của chính game.
-const TOOL_VER = 'v2026.11.15';
+const TOOL_VER = 'v2026.11.16';
 
 (() => {
   if (window.__vkKM) { window.__vkKM.show(); return; }
@@ -876,6 +876,23 @@ const TOOL_VER = 'v2026.11.15';
   // ───────────────────────── Bản mệnh pháp bảo ─────────────────────────
   const VAN = { 'van.thieu': 'Thiêu đốt', 'van.doc': 'Trúng độc', 'van.han': 'Hàn khí', 'van.troi': 'Trói', 'van.kim_chung': 'Kim chung (hộ thuẫn)', 'van.hut_huyet': 'Hút huyết', 'van.liet': 'Liệt (sát thương)' };
   const vanTen = (id) => VAN[id] || String(id || '').replace(/^van\./, '');
+  // Chú giải từng thuộc tính của bản mệnh (đọc từ code game; con số có thể đổi theo bản cập nhật)
+  const natalGlossary = () => {
+    const row = (k, v) => `<tr><td style="white-space:nowrap;vertical-align:top"><b>${k}</b></td><td style="font-size:13px">${v}</td></tr>`;
+    return `<details class="vk-card" style="margin-top:8px"><summary><b>Chú giải các thuộc tính</b></summary><table class="vk-t" style="margin-top:6px">` + [
+      row('Phẩm', 'Phẩm hiện tại của món. Phẩm càng cao thì uy lực chiêu nhân theo tỉ lệ hệ số phẩm mới so với phẩm gốc; linh lực tốn mỗi chiêu cũng tăng theo cảnh giới yêu cầu của phẩm mới. Tế luyện không nhận món phẩm Thần.'),
+      row('Phẩm gốc / giai', 'Phẩm lúc tế luyện. Nâng phẩm (nâng giai) được tối đa +2 giai so với phẩm gốc, không quá phẩm cao nhất của game. Mỗi lần nâng cần: bản mệnh đã Viên mãn, cảnh giới đủ cho phẩm kế tiếp, tốn thọ nguyên và linh thạch, có thể thất bại; nâng xong tâm huyết về mức đầu phải nuôi lại.'),
+      row('Tâm huyết', 'Điểm nuôi bản mệnh. Tăng khi thắng trận: địch cùng cảnh giới trở lên +1, thấp hơn một cảnh giới +0,5, tối đa +6 mỗi năm (bản 8/11); Nghịch Thiên và Tuyệt Mệnh được cộng ít hơn. Đủ mốc thì lên tầng. Bản mệnh "tổn" thì tạm mất tác dụng.'),
+      row('Tầng 1 → Viên mãn', 'Tầng càng cao càng mạnh. <b>Hệ số kinh mạch</b> của bản mệnh: ×1,5 (tầng 1), ×1,65 (tầng 2), ×1,8 (tầng 3 và Viên mãn). <b>Tầng 2</b>: chiêu tốn linh lực ít hơn (×0,85). <b>Tầng 3</b>: hồi chiêu giảm 1 lượt (tối thiểu 1; chiêu gốc hồi 0 giữ nguyên). <b>Viên mãn</b>: mở thêm ô văn, được chiêu Tế Huyết (chiêu công mạnh ×2,5 nhưng chỉ dùng được một lần mỗi trận và đốt thọ nguyên), và nâng giai được. Hệ số hợp hệ linh căn của bạn còn cộng thêm 10%.'),
+      row('Chiêu bản mệnh', 'Chiêu của chính món pháp khí, tính như một chiêu trong trận (xem ở tab Thân của game). Được tăng uy, đổi tốn linh lực, đổi hồi chiêu theo phẩm, tầng và các văn đã khắc.'),
+      row('Khiếu bẩm sinh', 'Một văn gắn sẵn ngay lúc tế luyện, chọn theo chiêu của món: chiêu gây cháy → Thiêu đốt, độc → Trúng độc, hàn → Hàn khí, trói → Trói, chiêu thủ → Kim chung, chiêu hồi phục → Hút huyết, còn lại → Liệt. Món không có chiêu thì chọn theo chỉ số bị động. Khiếu có cấp, nâng cấp bằng cách nuốt.'),
+      row('Văn', 'Khắc thêm vào các ô văn (số ô tăng theo tầng, tối đa 4). Có 7 nhóm: <b>Công</b> (Liệt: uy chiêu cao hơn; Phá Giáp; Liên Hoàn: đánh thêm một đòn), <b>Thủ</b> (Hộ Thể; Kim Chung: dựng khiên sau khi ra chiêu), <b>Hồi</b> (Hút Huyết; Tụ Linh: linh lực mỗi lượt), <b>Hiệu ứng</b> (Thiêu đốt, Độc, Hàn, Trói; tối đa 2 văn), <b>Dạng</b> (Phân Ảnh: chiêu đơn thành lan; Vạn Ảnh: toàn trận, cần Viên mãn; Quy Nhất: thu về đơn; tối đa 1), <b>Hệ</b> (nhuộm chiêu sang hệ khác; tối đa 1), <b>Nội tại</b> (Uẩn Bảo và chỉ số cộng theo hệ số phẩm; chỉ dùng cho món không có chiêu). Văn nhóm Công, Hiệu ứng, Dạng, Hệ chỉ có tác dụng với chiêu công.'),
+      row('Cấp văn', 'Từ 1 đến 5, cấp càng cao hiệu quả càng lớn. Cấp 2 và 3 cần điểm nuốt (10 và 30); cấp 4 và 5 chỉ có tỉ lệ thành công thấp (12% và 6%) và phải nuốt món cùng phẩm (bản 8/11). Phí khắc văn cao gấp ba trước đây.'),
+      row('Nuốt (thôn phệ)', 'Nuốt một món khác để lấy điểm nâng cấp khiếu hoặc văn. Văn đã đạt cấp 3 không nuốt thêm được nên không mất món oan.'),
+      row('Chi phí tế luyện', '<b>Năm thọ nguyên</b> bị đốt (tùy phẩm và mức tay nghề), <b>linh thạch</b> (theo phẩm), và <b>tỉ lệ thất bại</b> (tay nghề càng cao càng thấp). Thất bại thì món còn nhưng hao khoảng một nửa số thọ nguyên. Tế luyện từ Trúc Cơ; món biến khỏi túi và không đặt lên kinh mạch được nữa.'),
+      row('Hóa bản mệnh', 'Gỡ bản mệnh hiện tại để đổi món khác, tốn thọ nguyên theo phẩm. Phải làm trong game trước khi tế luyện món mới.'),
+    ].join('') + '</table><div class="vk-mu" style="font-size:12px;margin-top:6px">Con số lấy từ code và nhật ký game bản mới nhất tool đã đọc; game hay cân bằng lại nên có thể lệch đôi chút.</div></details>';
+  };
   function renderNatal(nv) {
     const box = body.querySelector('#vk-nt'); if (!box) return;
     const K = S.core, Cc = C(), nat = nv.natal;
@@ -883,7 +900,7 @@ const TOOL_VER = 'v2026.11.15';
     if (nat) {
       const it = Cc.items.get(nat.item);
       h += `<table class="vk-t" style="margin-top:8px"><tr><td>Bản mệnh</td><td><b>${esc(it ? it.ten : nat.item)}</b></td></tr><tr><td>Phẩm</td><td>${PHAM[nat.grade] || nat.grade}${nat.base && nat.base !== nat.grade ? ` (gốc ${PHAM[nat.base] || nat.base})` : ''}</td></tr><tr><td>Tâm huyết</td><td>${nat.exp}</td></tr><tr><td>Khiếu bẩm sinh</td><td>${esc(vanTen(nat.innate && nat.innate.id))} (cấp ${(nat.innate && nat.innate.level) || 0})</td></tr><tr><td>Văn đã khắc</td><td>${(nat.runes || []).length ? nat.runes.map((r) => esc(vanTen(r))).join(', ') : '<span class="vk-mu">chưa có</span>'}</td></tr></table>` +
-        '<div class="vk-mu" style="font-size:12px;margin-top:6px">Bạn đã có bản mệnh. Muốn đổi món khác phải "Hóa bản mệnh" trong game trước. Các bảng xếp kinh mạch của tool đã tính sẵn chiêu và chỉ số của bản mệnh.</div></div>';
+        '<div class="vk-mu" style="font-size:12px;margin-top:6px">Bạn đã có bản mệnh. Muốn đổi món khác phải "Hóa bản mệnh" trong game trước. Các bảng xếp kinh mạch của tool đã tính sẵn chiêu và chỉ số của bản mệnh.</div>' + natalGlossary() + '</div>';
       box.innerHTML = h; return;
     }
     if (!K.I8 || !K.kv || !K.rS) { box.innerHTML = h + '<div class="vk-bad" style="margin-top:8px">Game đổi cách tính bản mệnh nên tool chưa đọc được phần chọn món. Phần xếp kinh mạch vẫn dùng được.</div></div>'; return; }
@@ -894,6 +911,7 @@ const TOOL_VER = 'v2026.11.15';
     const top = okRows.slice(0, 8);
     h += `<div class="vk-mu" style="font-size:13px;margin-top:8px">Chưa có bản mệnh. Tool thử từng pháp khí trong túi mà bạn đủ điều kiện tế luyện (tối đa 8 món phẩm cao nhất): cho món đó làm bản mệnh, xếp lại kinh mạch bằng đồ còn lại, rồi so điểm với cách xếp hiện tại. Chỉ tính lúc mới tế luyện (tâm huyết 0, chưa khắc văn).</div>
       <button class="vk-btn" id="vk-ntgo" ${top.length ? '' : 'disabled'}>So sánh các món làm bản mệnh</button>${progressHtml('vk-ntpr')}<div id="vk-nto">${top.length ? '' : `<div class="vk-mu" style="margin-top:6px">${noRows.length ? 'Chưa có pháp khí nào đủ điều kiện tế luyện.' : 'Trong túi chưa có pháp khí nào để tế luyện.'}</div>`}${noRows.length ? `<div class="vk-mu" style="font-size:12px;margin-top:6px">Chưa tế luyện được: ${noRows.slice(0, 8).map((x) => `${esc(x.it.ten)} (${esc(x.err)})`).join('; ')}</div>` : ''}</div></div>`;
+    h = h.replace(/<\/div>$/, natalGlossary() + '</div>');
     box.innerHTML = h;
     const go = box.querySelector('#vk-ntgo'); if (!go) return;
     go.onclick = async () => {
