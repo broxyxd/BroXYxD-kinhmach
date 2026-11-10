@@ -1,7 +1,7 @@
 // Trợ lý Kinh mạch — Vạn Kiếp Tu Tiên (bản tách riêng chỉ có phần kinh mạch).
 // Tách từ vk-tro-ly.js v2.2.0. Chủ yếu tính toán; chỉ tự xếp kinh mạch khi bạn bấm nút. Không gửi dữ liệu của bạn ra ngoài (chỉ tải nhật ký cập nhật công khai của game).
 // Chạy trong trang game: tải lại code game thành bản sao để dùng hàm tính của chính game.
-const TOOL_VER = 'v2026.11.18';
+const TOOL_VER = 'v2026.11.19';
 
 (() => {
   if (window.__vkKM) { window.__vkKM.show(); return; }
@@ -26,6 +26,8 @@ const TOOL_VER = 'v2026.11.18';
     I8: [/function ([\w$]+)\(\w,\w\)\{if\(\w\.natal\)return"Đã có bản mệnh\. Hóa bản mệnh cũ trước\."/, 'điều kiện bản mệnh'],
     rS: [/function ([\w$]+)\(\w\)\{const \w=\w\.chieu;if\(!\w\)return [\w$]+\(\w\);const \w=new Set\(\(\w\.effects\?\?\[\]\)/, 'khiếu bản mệnh'],
     IP: [/function ([\w$]+)\(\w,\w,\w,\w=0\)\{return [\w$]+\(\w,\w,\w,\w,[\w$]+\(\w,\w,"sell",\w\)\)\}/, 'giá bán'],
+    kmBC: [/function ([\w$]+)\(\w,\w,\w,\w\)\{const \w=[\w$]+\(\w\),\w=[\w$]+\(\w,\w,\w\.dac_tinh\?\?\{\},\w,\w\),\w=[\w$]+\(\w,[\w$]+\.fromSeed\(\w\.int\(0,2\*\*31-1\)\)\);return\{mau:\w,trangThai:/, 'dựng lưới kinh mạch'],
+    kmGs: [/function ([\w$]+)\(\w,\w\)\{const \w=\w\.linhCan\.get\(`linh_can\.\$\{\w\}`\)\?\?\w\.linhCan\.get\("linh_can\.song"\)/, 'định nghĩa phẩm linh căn'],
     Xa: [/function ([\w$]+)\(\w,\w\)\{return [\w$]+\([\w$]+\(\w,\w\)\)\*\(1\+\(\w\.tucTue\?\?0\)\)\*/, 'tốc độ tu luyện'],
     Sn: [/function ([\w$]+)\(\w,\w\)\{return Math\.round\([\w$]+\(\w\)\.tuViMoiTieu\*\(1\+[\w$]+\*\w\)\)\}/, 'tu vi mỗi tiểu cảnh giới'],
     fiGet: [/TU_VI_MOI_NAM:\w=>\{([\w$]+)=\w\}/, 'tu vi mỗi năm'],
@@ -1069,6 +1071,11 @@ const TOOL_VER = 'v2026.11.18';
     <div class="vk-card"><h3>Xếp lý tưởng: đủ mọi đồ của game</h3>
       <div class="vk-mu" style="font-size:13px">Giả sử bạn có <b>đủ mọi công pháp và pháp khí</b> của game (dùng được ở cảnh giới hiện tại, phẩm không quá mức chọn dưới đây), xếp trên <b>đúng lưới kinh mạch của bạn</b> (cả hai bộ dùng chung một lưới). Tool chọn bộ đồ tối ưu để bạn biết nên săn món nào. Dùng chế độ và lối tu ở khối "Xếp kinh mạch tối ưu".</div>
       <div style="margin:8px 0"><select class="vk-sel" id="vk-idp"><option value="5" selected>Phẩm dưới Tiên (tới Thiên)</option><option value="4">Tới Địa</option><option value="3">Tới Huyền</option><option value="2">Tới Hoàng</option><option value="7">Mọi phẩm (kể cả Tiên, Thần)</option></select></div>
+      <div class="vk-mu" style="font-size:13px;margin-top:6px">Lưới kinh mạch (mặc định là của bạn; chọn khác để xem lưới lý tưởng của thể chất / linh căn đó):</div>
+      <div style="margin:4px 0;display:flex;flex-wrap:wrap;gap:6px"><select class="vk-sel" id="vk-itc"></select><select class="vk-sel" id="vk-ilc"><option value="me">Linh căn của tôi</option><option value="thien">Thiên linh căn</option><option value="bien_di">Biến dị linh căn</option><option value="song">Song linh căn</option><option value="tap">Tạp linh căn</option><option value="ngu_hanh">Ngũ hành linh căn</option><option value="vo">Vô linh căn</option></select>
+      <select class="vk-sel" id="vk-ih1"></select><select class="vk-sel" id="vk-ih2"></select><select class="vk-sel" id="vk-ih3"></select>
+      <select class="vk-sel" id="vk-icg"></select><label style="font-size:13px">Hạt giống màu ô <input class="vk-sel" id="vk-isd" type="number" value="1" min="1" style="width:70px"></label></div>
+      <div class="vk-mu" style="font-size:12px" id="vk-icn"></div>
       <button class="vk-btn" id="vk-id">Xếp lý tưởng</button>${progressHtml('vk-pr7')}<div id="vk-ido"></div></div>
     <div class="vk-card"><h3>Ô kinh mạch nên mở</h3>
       <div class="vk-mu" style="font-size:13px">Có ${tac.length} ô tắc · còn ${mo} lượt khai thông. Tool thử mở từng ô rồi xếp lại để xem ô nào lợi nhất.</div>
@@ -1138,25 +1145,62 @@ const TOOL_VER = 'v2026.11.18';
     try { renderBiCanh(); } catch (e) { console.error(e); body.querySelector('#vk-bc').innerHTML = errBox(e); }
     try { renderNatal(nv); } catch (e) { console.error(e); body.querySelector('#vk-nt').innerHTML = errBox(e); }
     try { renderUpdate(); } catch (e) { console.error(e); body.querySelector('#vk-up').innerHTML = errBox(e); }
+    // Lưới lý tưởng: chọn thể chất / linh căn / cảnh giới khác (màu ô do game bốc ngẫu nhiên theo hạt giống nên chỉ là một ví dụ)
+    {
+      const Kc = S.core, Cc = C(), HE5 = ['kim', 'moc', 'thuy', 'hoa', 'tho'], HE4 = ['loi', 'bang', 'phong', 'am'];
+      const $ = (id) => body.querySelector(id);
+      const tcs = Cc.theChat ? [...Cc.theChat.values()] : [];
+      $('#vk-itc').innerHTML = '<option value="me">Thể chất của tôi</option>' + tcs.map((t) => `<option value="${esc(t.id)}">${esc(t.ten || t.id)}</option>`).join('');
+      $('#vk-icg').innerHTML = REALMS.map((n, i) => `<option value="${i}" ${i === nv.canhGioi ? 'selected' : ''}>${n}${i === nv.canhGioi ? ' (của bạn)' : ''}</option>`).join('');
+      const ok = !!(Kc.kmBC && Kc.kmGs && Kc.fn && Cc.theChat);
+      const upd = () => {
+        const lc = $('#vk-ilc').value, n = lc === 'thien' || lc === 'bien_di' ? 1 : lc === 'song' ? 2 : lc === 'tap' ? 3 : 0, src = lc === 'bien_di' ? HE4 : HE5;
+        ['#vk-ih1', '#vk-ih2', '#vk-ih3'].forEach((id, k) => { const el = $(id), v = el.value; el.hidden = k >= n; el.innerHTML = src.map((h) => `<option value="${h}">${heTen(h)}</option>`).join(''); el.value = src.includes(v) ? v : src[k % src.length]; });
+        const custom = $('#vk-itc').value !== 'me' || lc !== 'me' || +$('#vk-icg').value !== nv.canhGioi;
+        $('#vk-icn').textContent = custom ? (ok ? 'Lưới tùy chọn: ô nào mở theo cảnh giới đã chọn; thể chất và linh căn tính theo chỉ số của bạn. Màu ô là ví dụ theo hạt giống, đổi hạt giống để xem lưới khác.' : 'Game đổi cách dựng lưới nên tool chưa dựng được lưới khác; chỉ dùng được lưới của bạn.') : '';
+      };
+      ['#vk-itc', '#vk-ilc', '#vk-icg'].forEach((id) => { $(id).onchange = upd; }); upd();
+    }
     body.querySelector('#vk-id').onclick = async (ev) => {
       ev.target.disabled = true; S.abort = false;
       const out = body.querySelector('#vk-ido'), prog = bindProgress(body.querySelector('#vk-pr7'));
       try {
-        const mode = body.querySelector('#vk-mode').value, maxP = +body.querySelector('#vk-idp').value, Cc = C();
+        const Kc = S.core, mode = body.querySelector('#vk-mode').value, maxP = +body.querySelector('#vk-idp').value, Cc = C();
+        const tcSel = body.querySelector('#vk-itc').value, lcSel = body.querySelector('#vk-ilc').value, realmSel = +body.querySelector('#vk-icg').value;
+        const custom = tcSel !== 'me' || lcSel !== 'me' || realmSel !== nv.canhGioi;
+        let base = clone(nv), gridNote = '';
+        if (custom) {
+          if (!(Kc.kmBC && Kc.kmGs && Kc.fn && Cc.theChat)) throw new Error('Game đổi cách dựng lưới kinh mạch nên tool chưa dựng được lưới khác. Lưới của bạn vẫn dùng được.');
+          const tcId = tcSel === 'me' ? nv.theChat : tcSel, tcDef = Cc.theChat.get(tcId);
+          let lc = nv.linhCan;
+          if (lcSel !== 'me') {
+            const hs = ['#vk-ih1', '#vk-ih2', '#vk-ih3'].map((id) => body.querySelector(id).value);
+            const n = lcSel === 'thien' || lcSel === 'bien_di' ? 1 : lcSel === 'song' ? 2 : lcSel === 'tap' ? 3 : 0;
+            const he = lcSel === 'ngu_hanh' ? ['kim', 'moc', 'thuy', 'hoa', 'tho'] : [...new Set(hs.slice(0, n))];
+            if (lcSel === 'song' && he.length < 2) throw new Error('Song linh căn cần hai hệ khác nhau.');
+            if (lcSel === 'tap' && he.length < 3) throw new Error('Tạp linh căn cần ba hệ khác nhau.');
+            lc = { pham: lcSel, he };
+          }
+          base.theChat = tcId; base.linhCan = lc; base.canhGioi = realmSel; base.tieuCanhGioi = realmSel === 0 ? 0 : 2; delete base.natal;
+          base.kinhMach = Kc.kmBC(tcDef, lc, Kc.fn.fromSeed(String(body.querySelector('#vk-isd').value || 1)), Kc.kmGs(Cc, lc.pham));
+          const g0 = Kc.xo(Cc, base);
+          base.kinhMach.trangThai = g0.vung.map((v) => (v >= 0 && v <= realmSel ? 'thong' : 'an'));
+          gridNote = `Lưới: ${esc((tcDef && tcDef.ten) || tcId)} · ${lcSel === 'me' ? 'linh căn của bạn' : esc(lc.pham) + ' ' + lc.he.map(heTen).join('/')} · ${REALMS[realmSel]} · hạt giống ${esc(body.querySelector('#vk-isd').value || 1)}. `;
+        }
         const bagHas = (id) => (nv.tuiDo[id] || 0) > 0 || (nv.kinhMach.manh || []).some((m) => m.item === id);
         const pw = (it) => { const b = it.bi_dong || {}, ch = it.chieu; return (it.pham_cap || 0) * 10 + (it.linh_luc || 0) * 4 + (b.toc_do || 0) * 40 + (b.dot_pha || 0) * 80 + ((b.khi_huyet || 0) + (b.ho_the || 0)) * 30 + (b.khang_tam_ma || 0) * 10 + (ch && ch.dang === 'cong' ? (ch.uy || 0) * 6 : ch ? (ch.uy || 0) * 3 : 0); };
         // Món dùng được ở cảnh giới này, phẩm trong mức chọn; giữ những món mạnh nhất của từng loại để tìm không quá lâu
-        const all = [...Cc.items.values()].filter((it) => (it.loai === 'cong_phap' || it.loai === 'phap_khi') && it.hinh && (it.pham_cap || 0) <= maxP && (it.pham_cap || 0) >= 1 && (it.canh_gioi ?? 0) <= nv.canhGioi && !it.theo_kiep);
+        const all = [...Cc.items.values()].filter((it) => (it.loai === 'cong_phap' || it.loai === 'phap_khi') && it.hinh && (it.pham_cap || 0) <= maxP && (it.pham_cap || 0) >= 1 && (it.canh_gioi ?? 0) <= base.canhGioi && !it.theo_kiep);
         const grp = {}; all.forEach((it) => { (grp[kindOf(it)] = grp[kindOf(it)] || []).push(it); });
         const pool = Object.values(grp).flatMap((l) => l.sort((a, b) => pw(b) - pw(a)).slice(0, 28));
-        if (!pool.length) { out.innerHTML = '<div class="vk-mu">Không có món nào phù hợp mức phẩm này.</div>'; ev.target.disabled = false; return; }
-        const nvI = clone(nv); nvI.tuiDo = {}; pool.forEach((it) => { nvI.tuiDo[it.id] = 1; }); nvI.kinhMach.manh = []; nvI.kinhMach.mastery = {};
+        if (!pool.length) { out.innerHTML = '<div class="vk-mu">Không có món nào phù hợp mức phẩm và cảnh giới này.</div>'; ev.target.disabled = false; return; }
+        const nvI = clone(base); nvI.tuiDo = {}; pool.forEach((it) => { nvI.tuiDo[it.id] = 1; }); nvI.kinhMach.manh = []; nvI.kinhMach.mastery = {};
         const res = await optimizeMode(nvI, mode, Math.max(2500, autoIters(nvI)), prog, 0, 1, 'Xếp với đủ đồ…');
         body.querySelector('#vk-pr7').style.display = 'none';
-        const cur = evalCurrent(nv, mode);
+        const cur = custom ? null : evalCurrent(nv, mode);
         const rowsT = res.manh.map((m, i) => { const it = Cc.items.get(m.item), have = bagHas(m.item), rm = res.R && res.R.manh && res.R.manh[i]; return `<tr><td><b>${i + 1}. ${esc(it.ten)}</b><br><span class="vk-mu" style="font-size:12px">${kindOf(it)} · ${esc((it.he || ['vo_sac']).map(heTen).join('/'))} · phẩm ${PHAM[it.pham_cap] || it.pham_cap}${it.gia ? ' · giá gốc ' + it.gia : ''}</span></td><td>${have ? '<span class="vk-ok">đã có</span>' : '<span class="vk-bad">chưa có</span>'}${rm && rm.thong === false ? '<br><span class="vk-bad">không thông</span>' : ''}</td></tr>`; }).join('');
         const missing = res.manh.filter((m) => !bagHas(m.item)).length;
-        out.innerHTML = `<div class="vk-card" style="border-color:#1a7f37;margin:6px 0"><b>Kết quả:</b> với đủ đồ, bộ tối ưu thắng <b>${res.wins}/${res.n}</b> trận mẫu (điểm ${Math.round(res.score)}) so với bộ hiện tại của bạn <b>${cur.wins}/${cur.n}</b> (điểm ${Math.round(cur.score)}). Bạn đã có ${res.manh.length - missing}/${res.manh.length} món trong bộ này.</div>` + drawGrid(nvI, res.manh) + `<table class="vk-t" style="margin-top:8px"><tr><th>Món</th><th>Bạn</th></tr>${rowsT}</table><div class="vk-mu" style="font-size:12px;margin-top:6px">Tool chỉ thử các món mạnh nhất mỗi loại (tối đa 28 món mỗi loại) nên có thể bỏ sót vài món hợp lưới đặc biệt. Điểm tính khi đã lĩnh ngộ xong. Giá gốc chỉ để tham khảo, tiệm có thể bán giá khác.</div>` + pieceTable(res.R);
+        out.innerHTML = `<div class="vk-card" style="border-color:#1a7f37;margin:6px 0"><b>Kết quả:</b> ${gridNote}với đủ đồ, bộ tối ưu thắng <b>${res.wins}/${res.n}</b> trận mẫu (điểm ${Math.round(res.score)})${cur ? ` so với bộ hiện tại của bạn <b>${cur.wins}/${cur.n}</b> (điểm ${Math.round(cur.score)})` : ''}. Bạn đã có ${res.manh.length - missing}/${res.manh.length} món trong bộ này.</div>` + drawGrid(nvI, res.manh) + `<table class="vk-t" style="margin-top:8px"><tr><th>Món</th><th>Bạn</th></tr>${rowsT}</table><div class="vk-mu" style="font-size:12px;margin-top:6px">Tool chỉ thử các món mạnh nhất mỗi loại (tối đa 28 món mỗi loại) nên có thể bỏ sót vài món hợp lưới đặc biệt. Điểm tính khi đã lĩnh ngộ xong. Giá gốc chỉ để tham khảo, tiệm có thể bán giá khác.${custom ? ' Chỉ số nhân vật (căn cốt, đạo tâm...) vẫn là của bạn; thể chất mới chỉ đổi lưới và các đặc tính của nó.' : ''}</div>` + pieceTable(res.R);
       } catch (e) { console.error(e); out.innerHTML = errBox(e); }
       ev.target.disabled = false;
     };
