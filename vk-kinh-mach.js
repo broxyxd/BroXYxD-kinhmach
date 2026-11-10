@@ -1,7 +1,7 @@
 // Trợ lý Kinh mạch — Vạn Kiếp Tu Tiên (bản tách riêng chỉ có phần kinh mạch).
 // Tách từ vk-tro-ly.js v2.2.0. Chủ yếu tính toán; chỉ tự xếp kinh mạch khi bạn bấm nút. Không gửi dữ liệu của bạn ra ngoài (chỉ tải nhật ký cập nhật công khai của game).
 // Chạy trong trang game: tải lại code game thành bản sao để dùng hàm tính của chính game.
-const TOOL_VER = 'v2026.11.17';
+const TOOL_VER = 'v2026.11.18';
 
 (() => {
   if (window.__vkKM) { window.__vkKM.show(); return; }
@@ -1066,6 +1066,10 @@ const TOOL_VER = 'v2026.11.17';
     <div class="vk-card"><h3>Hai bộ kinh mạch: bế quan và đánh</h3>
       <div class="vk-mu" style="font-size:13px">Game cho lưu tới 3 bộ kinh mạch và đổi bộ miễn phí (mở bộ 2 tốn 1.000 linh thạch, bộ 3 tốn 15.000). Bạn đang có <b>${(nv.kinhMach.loadouts || []).length || 1}</b> bộ. Nên lưu 1 bộ <b>Tu luyện</b> (dùng khi bế quan, đột phá) và 1 bộ <b>Đánh</b> (dùng khi đi đánh). Tool xếp sẵn cả hai và có thể tự xếp hộ.</div>
       <button class="vk-btn" id="vk-2b">Xếp 2 bộ</button>${progressHtml('vk-pr2b')}<div id="vk-2o"></div></div>
+    <div class="vk-card"><h3>Xếp lý tưởng: đủ mọi đồ của game</h3>
+      <div class="vk-mu" style="font-size:13px">Giả sử bạn có <b>đủ mọi công pháp và pháp khí</b> của game (dùng được ở cảnh giới hiện tại, phẩm không quá mức chọn dưới đây), xếp trên <b>đúng lưới kinh mạch của bạn</b> (cả hai bộ dùng chung một lưới). Tool chọn bộ đồ tối ưu để bạn biết nên săn món nào. Dùng chế độ và lối tu ở khối "Xếp kinh mạch tối ưu".</div>
+      <div style="margin:8px 0"><select class="vk-sel" id="vk-idp"><option value="5" selected>Phẩm dưới Tiên (tới Thiên)</option><option value="4">Tới Địa</option><option value="3">Tới Huyền</option><option value="2">Tới Hoàng</option><option value="7">Mọi phẩm (kể cả Tiên, Thần)</option></select></div>
+      <button class="vk-btn" id="vk-id">Xếp lý tưởng</button>${progressHtml('vk-pr7')}<div id="vk-ido"></div></div>
     <div class="vk-card"><h3>Ô kinh mạch nên mở</h3>
       <div class="vk-mu" style="font-size:13px">Có ${tac.length} ô tắc · còn ${mo} lượt khai thông. Tool thử mở từng ô rồi xếp lại để xem ô nào lợi nhất.</div>
       <button class="vk-btn" id="vk-op" ${tac.length ? '' : 'disabled'}>Tìm ô nên mở</button>
@@ -1134,6 +1138,28 @@ const TOOL_VER = 'v2026.11.17';
     try { renderBiCanh(); } catch (e) { console.error(e); body.querySelector('#vk-bc').innerHTML = errBox(e); }
     try { renderNatal(nv); } catch (e) { console.error(e); body.querySelector('#vk-nt').innerHTML = errBox(e); }
     try { renderUpdate(); } catch (e) { console.error(e); body.querySelector('#vk-up').innerHTML = errBox(e); }
+    body.querySelector('#vk-id').onclick = async (ev) => {
+      ev.target.disabled = true; S.abort = false;
+      const out = body.querySelector('#vk-ido'), prog = bindProgress(body.querySelector('#vk-pr7'));
+      try {
+        const mode = body.querySelector('#vk-mode').value, maxP = +body.querySelector('#vk-idp').value, Cc = C();
+        const bagHas = (id) => (nv.tuiDo[id] || 0) > 0 || (nv.kinhMach.manh || []).some((m) => m.item === id);
+        const pw = (it) => { const b = it.bi_dong || {}, ch = it.chieu; return (it.pham_cap || 0) * 10 + (it.linh_luc || 0) * 4 + (b.toc_do || 0) * 40 + (b.dot_pha || 0) * 80 + ((b.khi_huyet || 0) + (b.ho_the || 0)) * 30 + (b.khang_tam_ma || 0) * 10 + (ch && ch.dang === 'cong' ? (ch.uy || 0) * 6 : ch ? (ch.uy || 0) * 3 : 0); };
+        // Món dùng được ở cảnh giới này, phẩm trong mức chọn; giữ những món mạnh nhất của từng loại để tìm không quá lâu
+        const all = [...Cc.items.values()].filter((it) => (it.loai === 'cong_phap' || it.loai === 'phap_khi') && it.hinh && (it.pham_cap || 0) <= maxP && (it.pham_cap || 0) >= 1 && (it.canh_gioi ?? 0) <= nv.canhGioi && !it.theo_kiep);
+        const grp = {}; all.forEach((it) => { (grp[kindOf(it)] = grp[kindOf(it)] || []).push(it); });
+        const pool = Object.values(grp).flatMap((l) => l.sort((a, b) => pw(b) - pw(a)).slice(0, 28));
+        if (!pool.length) { out.innerHTML = '<div class="vk-mu">Không có món nào phù hợp mức phẩm này.</div>'; ev.target.disabled = false; return; }
+        const nvI = clone(nv); nvI.tuiDo = {}; pool.forEach((it) => { nvI.tuiDo[it.id] = 1; }); nvI.kinhMach.manh = []; nvI.kinhMach.mastery = {};
+        const res = await optimizeMode(nvI, mode, Math.max(2500, autoIters(nvI)), prog, 0, 1, 'Xếp với đủ đồ…');
+        body.querySelector('#vk-pr7').style.display = 'none';
+        const cur = evalCurrent(nv, mode);
+        const rowsT = res.manh.map((m, i) => { const it = Cc.items.get(m.item), have = bagHas(m.item), rm = res.R && res.R.manh && res.R.manh[i]; return `<tr><td><b>${i + 1}. ${esc(it.ten)}</b><br><span class="vk-mu" style="font-size:12px">${kindOf(it)} · ${esc((it.he || ['vo_sac']).map(heTen).join('/'))} · phẩm ${PHAM[it.pham_cap] || it.pham_cap}${it.gia ? ' · giá gốc ' + it.gia : ''}</span></td><td>${have ? '<span class="vk-ok">đã có</span>' : '<span class="vk-bad">chưa có</span>'}${rm && rm.thong === false ? '<br><span class="vk-bad">không thông</span>' : ''}</td></tr>`; }).join('');
+        const missing = res.manh.filter((m) => !bagHas(m.item)).length;
+        out.innerHTML = `<div class="vk-card" style="border-color:#1a7f37;margin:6px 0"><b>Kết quả:</b> với đủ đồ, bộ tối ưu thắng <b>${res.wins}/${res.n}</b> trận mẫu (điểm ${Math.round(res.score)}) so với bộ hiện tại của bạn <b>${cur.wins}/${cur.n}</b> (điểm ${Math.round(cur.score)}). Bạn đã có ${res.manh.length - missing}/${res.manh.length} món trong bộ này.</div>` + drawGrid(nvI, res.manh) + `<table class="vk-t" style="margin-top:8px"><tr><th>Món</th><th>Bạn</th></tr>${rowsT}</table><div class="vk-mu" style="font-size:12px;margin-top:6px">Tool chỉ thử các món mạnh nhất mỗi loại (tối đa 28 món mỗi loại) nên có thể bỏ sót vài món hợp lưới đặc biệt. Điểm tính khi đã lĩnh ngộ xong. Giá gốc chỉ để tham khảo, tiệm có thể bán giá khác.</div>` + pieceTable(res.R);
+      } catch (e) { console.error(e); out.innerHTML = errBox(e); }
+      ev.target.disabled = false;
+    };
     body.querySelector('#vk-2b').onclick = async (ev) => {
       ev.target.disabled = true; S.abort = false;
       const prog = bindProgress(body.querySelector('#vk-pr2b'));
