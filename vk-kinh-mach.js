@@ -1,7 +1,7 @@
 // Trợ lý Kinh mạch — Vạn Kiếp Tu Tiên (bản tách riêng chỉ có phần kinh mạch).
 // Tách từ vk-tro-ly.js v2.2.0. Chủ yếu tính toán; chỉ tự xếp kinh mạch khi bạn bấm nút. Không gửi dữ liệu của bạn ra ngoài (chỉ tải nhật ký cập nhật công khai của game).
 // Chạy trong trang game: tải lại code game thành bản sao để dùng hàm tính của chính game.
-const TOOL_VER = 'v2026.11.19';
+const TOOL_VER = 'v2026.11.20';
 
 (() => {
   if (window.__vkKM) { window.__vkKM.show(); return; }
@@ -168,6 +168,12 @@ const TOOL_VER = 'v2026.11.19';
     if ((it.tag || []).includes('nghich') && !t.includes('ma')) t.push('ma');
     return t;
   };
+  // Đồ tà đạo theo định nghĩa của game: nhãn ma / nghịch / thi / quỷ / độc / hợp hoan, hoặc món ngự linh thi, hồn
+  const EVIL_TAGS = ['ma', 'nghich', 'thi', 'quy', 'doc', 'hop_hoan'];
+  const isEvil = (it) => (it.tag || []).some((t) => EVIL_TAGS.includes(t)) || (it.ngu_linh && (it.ngu_linh.loai === 'thi' || it.ngu_linh.loai === 'hon'));
+  // Đạo: 'auto' = theo nhân vật (đang theo tà đạo hoặc chọn lối tà thì cho dùng đồ tà, ngược lại chỉ chính đạo); 'chinh' = loại hết đồ tà; 'all' = không giới hạn
+  const allowEvil = (nv) => { const m = S.dao || 'auto'; if (m === 'all') return true; if (m === 'chinh') return false; return nv.path === 'ta' || !!(S.style && S.style.startsWith('s:') && TA_DAO.includes(S.style.slice(2))); };
+  const daoOk = (it, nv) => !isEvil(it) || allowEvil(nv);
   // st: 's:the' (lối theo nhãn) hoặc 'e:kim' (theo hệ linh căn)
   const loiMatch = (st, it) => st.startsWith('s:') ? schoolsOf(it).includes(st.slice(2)) : (it.he || []).includes(st.slice(2));
   const loiTen = (st) => st.startsWith('s:') ? ((LOI.find((l) => l[0] === st.slice(2)) || [])[1] || st) : (heTen(st.slice(2)) + ' tu');
@@ -266,7 +272,7 @@ const TOOL_VER = 'v2026.11.19';
   }
   function buildCandidates(nv0) {
     const K = S.core, c = C();
-    const pool = Object.keys(nv0.tuiDo).filter((id) => { const it = c.items.get(id); return it && (it.loai === 'cong_phap' || it.loai === 'phap_khi') && it.hinh && (it.canh_gioi ?? 0) <= nv0.canhGioi; });
+    const pool = Object.keys(nv0.tuiDo).filter((id) => { const it = c.items.get(id); return it && (it.loai === 'cong_phap' || it.loai === 'phap_khi') && it.hinh && (it.canh_gioi ?? 0) <= nv0.canhGioi && daoOk(it, nv0); });
     const g = K.xo(c, nv0), cand = {};
     S.cm = S.cm || new Map();
     const gsig = JSON.stringify([nv0.kinhMach.trangThai, nv0.canhGioi, nv0.tieuCanhGioi, nv0.kinhMach.huyetThem]);
@@ -1061,7 +1067,7 @@ const TOOL_VER = 'v2026.11.19';
     <div class="vk-card"><h3>Xếp kinh mạch tối ưu</h3>
       <div class="vk-mu" style="font-size:13px">Tool thử hàng nghìn cách xếp các món trong túi, đánh thử ${'9'} trận mẫu cùng cảnh giới cho mỗi cách và giữ cách tốt nhất.</div>
       <div style="margin:8px 0"><select class="vk-sel" id="vk-it"><option value="auto" selected>Tự động</option><option value="1500">Nhanh</option><option value="3000">Vừa</option><option value="6000">Kỹ (lâu)</option></select></div>
-      <div style="margin:6px 0"><span class="vk-mu" style="font-size:13px">Lối tu:</span> <select class="vk-sel" id="vk-style"><option value="auto">Tự động</option><optgroup label="Chính đạo"><option value="s:the">Thể tu</option><option value="s:phat">Phật tu</option><option value="s:kiem">Kiếm tu</option></optgroup><optgroup label="Tà đạo"><option value="s:ma">Ma tu</option><option value="s:doc">Độc cổ</option><option value="s:hop_hoan">Hợp hoan</option><option value="s:quy">Quỷ tu</option><option value="s:thi">Luyện thi</option></optgroup><optgroup label="Nghề"><option value="s:dan">Đan tu</option><option value="s:tran">Trận tu</option><option value="s:phu">Phù tu</option><option value="s:khi">Luyện bảo</option></optgroup><optgroup label="Theo hệ linh căn"><option value="e:kim">Kim tu</option><option value="e:moc">Mộc tu</option><option value="e:thuy">Thủy tu</option><option value="e:hoa">Hỏa tu</option><option value="e:tho">Thổ tu</option><option value="e:bang">Băng tu</option><option value="e:loi">Lôi tu</option><option value="e:phong">Phong tu</option><option value="e:am">Ám tu</option></optgroup><optgroup label="Theo kiểu đánh"><option value="cong">Công kích mạnh</option><option value="hp">Trâu bò (khí huyết + hộ thể)</option><option value="khong">Khống chế</option><option value="hoi">Hồi phục / hộ thuẫn</option><option value="dot">Hiệu ứng (độc, chảy máu, thiêu, hàn)</option></optgroup></select>
+      <div style="margin:6px 0"><span class="vk-mu" style="font-size:13px">Lối tu:</span> <select class="vk-sel" id="vk-style"><option value="auto">Tự động</option><optgroup label="Chính đạo"><option value="s:the">Thể tu</option><option value="s:phat">Phật tu</option><option value="s:kiem">Kiếm tu</option></optgroup><optgroup label="Tà đạo"><option value="s:ma">Ma tu</option><option value="s:doc">Độc cổ</option><option value="s:hop_hoan">Hợp hoan</option><option value="s:quy">Quỷ tu</option><option value="s:thi">Luyện thi</option></optgroup><optgroup label="Nghề"><option value="s:dan">Đan tu</option><option value="s:tran">Trận tu</option><option value="s:phu">Phù tu</option><option value="s:khi">Luyện bảo</option></optgroup><optgroup label="Theo hệ linh căn"><option value="e:kim">Kim tu</option><option value="e:moc">Mộc tu</option><option value="e:thuy">Thủy tu</option><option value="e:hoa">Hỏa tu</option><option value="e:tho">Thổ tu</option><option value="e:bang">Băng tu</option><option value="e:loi">Lôi tu</option><option value="e:phong">Phong tu</option><option value="e:am">Ám tu</option></optgroup><optgroup label="Theo kiểu đánh"><option value="cong">Công kích mạnh</option><option value="hp">Trâu bò (khí huyết + hộ thể)</option><option value="khong">Khống chế</option><option value="hoi">Hồi phục / hộ thuẫn</option><option value="dot">Hiệu ứng (độc, chảy máu, thiêu, hàn)</option></optgroup></select> <span class="vk-mu" style="font-size:13px">Đạo:</span> <select class="vk-sel" id="vk-dao"><option value="auto">Tự động (theo nhân vật)</option><option value="chinh">Chỉ chính đạo (loại đồ tà)</option><option value="all">Cho phép cả tà đạo</option></select>
 </div>
       <button class="vk-btn" id="vk-go">Bắt đầu xếp</button>
       ${progressHtml('vk-pr')}<div id="vk-out"></div></div>
@@ -1138,6 +1144,7 @@ const TOOL_VER = 'v2026.11.19';
       } catch (e) { console.error(e); body.querySelector('#vk-out').innerHTML = errBox(e); }
       ev.target.disabled = false;
     };
+    ['dao'].forEach((k) => { const el = body.querySelector('#vk-' + k); if (!el) return; el.value = S[k] || 'auto'; el.onchange = () => { S[k] = el.value; S.best = null; const o = body.querySelector('#vk-out'); if (o) o.innerHTML = ''; }; });
     ['style'].forEach((k) => { const el = body.querySelector('#vk-' + k); if (!el) return; el.value = S[k] || 'auto'; el.onchange = () => { S[k] = el.value; S.best = null; const o = body.querySelector('#vk-out'); if (o) o.innerHTML = ''; }; });
     body.querySelector('#vk-lt').addEventListener('change', (e) => { S.lt = e.target.checked; S.ec = null; S.best = null; render(); });
     bindBuy(nv); bindCat(nv); bindDoi(nv);
@@ -1190,7 +1197,7 @@ const TOOL_VER = 'v2026.11.19';
         const bagHas = (id) => (nv.tuiDo[id] || 0) > 0 || (nv.kinhMach.manh || []).some((m) => m.item === id);
         const pw = (it) => { const b = it.bi_dong || {}, ch = it.chieu; return (it.pham_cap || 0) * 10 + (it.linh_luc || 0) * 4 + (b.toc_do || 0) * 40 + (b.dot_pha || 0) * 80 + ((b.khi_huyet || 0) + (b.ho_the || 0)) * 30 + (b.khang_tam_ma || 0) * 10 + (ch && ch.dang === 'cong' ? (ch.uy || 0) * 6 : ch ? (ch.uy || 0) * 3 : 0); };
         // Món dùng được ở cảnh giới này, phẩm trong mức chọn; giữ những món mạnh nhất của từng loại để tìm không quá lâu
-        const all = [...Cc.items.values()].filter((it) => (it.loai === 'cong_phap' || it.loai === 'phap_khi') && it.hinh && (it.pham_cap || 0) <= maxP && (it.pham_cap || 0) >= 1 && (it.canh_gioi ?? 0) <= base.canhGioi && !it.theo_kiep);
+        const all = [...Cc.items.values()].filter((it) => (it.loai === 'cong_phap' || it.loai === 'phap_khi') && it.hinh && (it.pham_cap || 0) <= maxP && (it.pham_cap || 0) >= 1 && (it.canh_gioi ?? 0) <= base.canhGioi && !it.theo_kiep && daoOk(it, base));
         const grp = {}; all.forEach((it) => { (grp[kindOf(it)] = grp[kindOf(it)] || []).push(it); });
         const pool = Object.values(grp).flatMap((l) => l.sort((a, b) => pw(b) - pw(a)).slice(0, 28));
         if (!pool.length) { out.innerHTML = '<div class="vk-mu">Không có món nào phù hợp mức phẩm và cảnh giới này.</div>'; ev.target.disabled = false; return; }
@@ -1372,6 +1379,10 @@ const TOOL_VER = 'v2026.11.19';
       ((best.R && best.R.diemNghich) ? `<div class="vk-mu" style="font-size:12px;margin-top:6px">Cách này còn ${best.R.diemNghich} điểm nghịch (−${Math.min(15, 3 * best.R.diemNghich)}% tỉ lệ đột phá). Lúc chuẩn bị đột phá, chọn chế độ "Ưu tiên tu luyện / đột phá" để tool ưu tiên xóa điểm nghịch.</div>` : '') +
       '<div class="vk-mu" style="font-size:12px;margin-top:6px">Trận mẫu: 9 loại quái cùng cảnh giới với bạn, ở tiểu cảnh giới quanh mức của bạn (thấp hơn 1, bằng, cao hơn 1).</div>' + pieceTable(best.R) + sellAdvice(nv, best);
     out.insertAdjacentHTML('beforeend', loiInfo(nv, best) + llInfo(best.P));
+    try {
+      const Cc = C(), ex = Object.keys(nv.tuiDo).filter((id) => nv.tuiDo[id] > 0).map((id) => Cc.items.get(id)).filter((it) => it && (it.loai === 'cong_phap' || it.loai === 'phap_khi') && it.hinh && !daoOk(it, nv));
+      if (ex.length) out.insertAdjacentHTML('beforeend', `<div class="vk-mu" style="font-size:12px;margin-top:6px">Đã loại ${ex.length} món tà đạo khỏi cách xếp (${ex.slice(0, 6).map((it) => esc(it.ten)).join(', ')}${ex.length > 6 ? '…' : ''}). Muốn dùng thì đổi ô "Đạo" sang "Cho phép cả tà đạo".</div>`);
+    } catch (e) { /* bỏ qua */ }
     bindApply('vk-ap', () => best.manh);
   }
   // Đồ công pháp/pháp khí không có mặt trong cách xếp tốt nhất → đề xuất bán
