@@ -1,7 +1,7 @@
 // Trợ lý Kinh mạch — Vạn Kiếp Tu Tiên (bản tách riêng chỉ có phần kinh mạch).
 // Tách từ vk-tro-ly.js v2.2.0. Chủ yếu tính toán; chỉ tự xếp kinh mạch khi bạn bấm nút. Không gửi dữ liệu của bạn ra ngoài (chỉ tải nhật ký cập nhật công khai của game).
 // Chạy trong trang game: tải lại code game thành bản sao để dùng hàm tính của chính game.
-const TOOL_VER = 'v2026.11.20';
+const TOOL_VER = 'v2026.11.21';
 
 (() => {
   if (window.__vkKM) { window.__vkKM.show(); return; }
@@ -521,7 +521,7 @@ const TOOL_VER = 'v2026.11.20';
   async function render() {
     try {
       if (!S.core) { body.innerHTML = `<div class="vk-card">⏳ <span id="vk-pg">Đang chuẩn bị…</span></div>`; S.core = await loadCore((m) => { const el = body.querySelector('#vk-pg'); if (el) el.textContent = m; }); }
-      if (!G().state.run) { body.innerHTML = `<div class="vk-card">Chưa có kiếp nào đang chơi. Vào game rồi bấm <b>Làm mới</b>.</div>`; return; }
+      if (!G().state.run) { body.innerHTML = `<div class="vk-card">Chưa có kiếp nào đang chơi. Vào game rồi bấm <b>Làm mới</b>, hoặc kéo save từ máy khác ở dưới.</div>` + syHtml(); syBind(body); return; }
       S.abort = false;
       tabKinhMach();
     } catch (e) { console.error(e); body.innerHTML = errBox(e); }
@@ -968,6 +968,87 @@ const TOOL_VER = 'v2026.11.20';
     try { const j = JSON.parse(lsGet('tu-tien.noi-dung-song') || 'null'); if (j && Array.isArray(j.nhatKy)) return { list: j.nhatKy, nguon: 'bản lưu trong trình duyệt', capNhat: j.capNhat }; } catch (e) { /* bỏ qua */ }
     return null;
   }
+
+  // ===== Đồng bộ save giữa các máy qua Gist bí mật của chính người dùng =====
+  // Chỉ chạy khi người dùng bấm nút. Token do người dùng tự dán, lưu trong trình duyệt của máy đó.
+  const SY_KEYS = ['tu-tien:run', 'tu-tien:meta', 'tu-tien:run:backup', 'tu-tien:meta:backup'];
+  const SY_DESC = 'vkkm-save (Van Kiep Tu Tien)';
+  const syTime = (t) => { try { return new Date(t).toLocaleString('vi-VN'); } catch (e) { return String(t); } };
+  async function syApi(path, opt) {
+    const tok = lsGet('vkkm.gtok'); if (!tok) throw new Error('Chưa dán token GitHub.');
+    const r = await fetch('https://api.github.com' + path, Object.assign({ cache: 'no-store' }, opt, { headers: Object.assign({ Authorization: 'Bearer ' + tok, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }, (opt && opt.headers) || {}) }));
+    if (r.status === 401) throw new Error('Token sai hoặc hết hạn (401).');
+    if (r.status === 403 || r.status === 404) throw new Error('Token thiếu quyền "gist" hoặc không truy cập được (' + r.status + ').');
+    if (!r.ok) throw new Error('GitHub trả lỗi ' + r.status);
+    return r.json();
+  }
+  async function syFind() {
+    const gid = lsGet('vkkm.gid');
+    if (gid) { try { return await syApi('/gists/' + gid); } catch (e) { if (!/404|quyền/.test(e.message)) throw e; } }
+    for (let pg = 1; pg <= 5; pg++) {
+      const l = await syApi('/gists?per_page=100&page=' + pg);
+      const g = l.find((x) => x.description === SY_DESC);
+      if (g) { lsSet('vkkm.gid', g.id); return await syApi('/gists/' + g.id); }
+      if (l.length < 100) break;
+    }
+    return null;
+  }
+  async function syRead(g) {
+    const f = g.files && g.files['vkkm-save.json']; if (!f) throw new Error('Gist không có file vkkm-save.json.');
+    let txt = f.content;
+    if (f.truncated || txt == null) { const r = await fetch(f.raw_url, { cache: 'no-store' }); if (!r.ok) throw new Error('Không đọc được nội dung gist (' + r.status + ').'); txt = await r.text(); }
+    const j = JSON.parse(txt);
+    if (!j || typeof j !== 'object' || !j.items || typeof j.items['tu-tien:run'] !== 'string') throw new Error('Nội dung gist không phải save hợp lệ.');
+    return j;
+  }
+  function syLocal() { const items = {}; for (const k of SY_KEYS) { const v = lsGet(k); if (v !== null) items[k] = v; } return items; }
+  function syHtml() {
+    const has = !!lsGet('vkkm.gtok');
+    return `<div class="vk-card"><h3>Đồng bộ save giữa các máy</h3>
+      <div class="vk-mu" style="font-size:13px">Game chỉ lưu save trong trình duyệt của từng máy. Mục này sao nguyên bản save (không sửa gì) lên một <b>Gist bí mật trong tài khoản GitHub của bạn</b>, máy khác kéo về. Chỉ gửi khi bạn bấm nút; tool không gửi đi đâu khác.</div>
+      <div style="margin:8px 0"><input id="vk-gt" type="password" placeholder="${has ? 'Đã lưu token trên máy này (dán token mới để đổi)' : 'Dán token GitHub (chỉ quyền gist)'}" style="width:100%;padding:8px;box-sizing:border-box"></div>
+      <div class="vk-mu" style="font-size:12px">Tạo token: GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token, chỉ tick <b>gist</b>. Token chỉ lưu trong trình duyệt máy này, mỗi máy dán một lần.</div>
+      <div style="display:flex;gap:6px;margin-top:8px"><button class="vk-btn" id="vk-syu" style="flex:1;margin:0">Đẩy save lên</button><button class="vk-btn sec" id="vk-syd" style="flex:1;margin:0">Kéo save về</button></div>
+      <div class="vk-mu" style="font-size:12px;margin-top:6px">Luôn <b>đẩy từ máy vừa chơi</b>, rồi <b>kéo ở máy sắp chơi</b>. Kéo về sẽ ghi đè save của máy này (tool tự giữ bản cũ trong trình duyệt) rồi tải lại trang. Nên xuất file save dự phòng trong game trước lần kéo đầu tiên. Tính năng chưa chạy thử trong game thật.</div>
+      <div id="vk-syo" style="margin-top:6px;font-size:13px"></div></div>`;
+  }
+  function syBind(box) {
+    const out = box.querySelector('#vk-syo'), say = (t, bad) => { out.innerHTML = `<span class="${bad ? 'vk-bad' : 'vk-ok'}">${esc(t)}</span>`; };
+    const saveTok = () => { const v = box.querySelector('#vk-gt').value.trim(); if (v) { lsSet('vkkm.gtok', v); box.querySelector('#vk-gt').value = ''; } };
+    const lock = (b, on) => box.querySelectorAll('#vk-syu,#vk-syd').forEach((x) => { x.disabled = on; });
+    box.querySelector('#vk-syu').onclick = async () => {
+      lock(0, true);
+      try {
+        saveTok();
+        const items = syLocal();
+        if (!items['tu-tien:run']) throw new Error('Máy này chưa có save để đẩy.');
+        const g = await syFind();
+        if (g) { try { const j = await syRead(g); if (j.at && !confirm('Gist đang có save lúc ' + syTime(j.at) + ' (từ "' + (j.may || '?') + '"). Ghi đè bằng save của máy này?')) { lock(0, false); say('Đã hủy.', true); return; } } catch (e) { /* gist hỏng thì cho ghi đè */ } }
+        const payload = JSON.stringify({ v: 1, at: Date.now(), may: (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || 'máy', ver: TOOL_VER, items });
+        const body2 = JSON.stringify({ description: SY_DESC, public: false, files: { 'vkkm-save.json': { content: payload } } });
+        const res = g ? await syApi('/gists/' + g.id, { method: 'PATCH', body: body2 }) : await syApi('/gists', { method: 'POST', body: body2 });
+        lsSet('vkkm.gid', res.id); lsSet('vkkm.lastsync', String(Date.now()));
+        say('Đã đẩy save lên lúc ' + syTime(Date.now()) + '. Giờ có thể kéo về ở máy khác.');
+      } catch (e) { say('Lỗi: ' + (e && e.message || e) + (/Failed to fetch|NetworkError/.test(String(e && e.message)) ? ' (có thể game chặn kết nối tới github.com)' : ''), true); }
+      lock(0, false);
+    };
+    box.querySelector('#vk-syd').onclick = async () => {
+      lock(0, true);
+      try {
+        saveTok();
+        const g = await syFind(); if (!g) throw new Error('Chưa tìm thấy gist save. Hãy đẩy lên từ máy kia trước.');
+        const j = await syRead(g);
+        const loc = syLocal(), last = +lsGet('vkkm.lastsync') || 0;
+        const msg = 'Kéo save lúc ' + syTime(j.at) + ' (từ "' + (j.may || '?') + '") về máy này?' + (loc['tu-tien:run'] ? '\nSave hiện có trên máy này sẽ bị thay (tool giữ bản cũ).' + (last ? '\nLần đồng bộ gần nhất trên máy này: ' + syTime(last) + '.' : '') : '');
+        if (!confirm(msg)) { lock(0, false); say('Đã hủy.', true); return; }
+        for (const k of SY_KEYS) { const o = lsGet(k); if (o !== null) lsSet('vkkm.prev.' + k, o); }
+        for (const k of SY_KEYS) { if (typeof j.items[k] === 'string') lsSet(k, j.items[k]); else { try { localStorage.removeItem(k); } catch (e) { /* bỏ qua */ } } }
+        lsSet('vkkm.lastsync', String(Date.now()));
+        say('Đã kéo xong, đang tải lại trang…');
+        setTimeout(() => location.reload(), 600);
+      } catch (e) { say('Lỗi: ' + (e && e.message || e) + (/Failed to fetch|NetworkError/.test(String(e && e.message)) ? ' (có thể game chặn kết nối tới github.com)' : ''), true); lock(0, false); }
+    };
+  }
   function renderUpdate() {
     const box = body.querySelector('#vk-up'); if (!box) return;
     const K = S.core, bundle = K.bundle || '?', last = lsGet('vkkm.bundle');
@@ -976,7 +1057,7 @@ const TOOL_VER = 'v2026.11.20';
     let h = `<div class="vk-card"><h3>Tool và game</h3><table class="vk-t"><tr><td>Tool</td><td><b>${TOOL_VER}</b></td></tr><tr><td>File code game đang chạy</td><td><b>${esc(bundle)}</b></td></tr><tr><td>Hàm game tool đã nhận ra</td><td><b>${ok.length}</b> (${ok.map(esc).join(', ')})</td></tr></table>` +
       (doi ? `<div class="vk-ok" style="margin-top:6px">Game vừa đổi file code (trước: ${esc(last)}). Tool đã dò lại được các hàm cần thiết.</div>` : '') +
       `<div class="vk-mu" style="font-size:12px;margin-top:6px">Nếu tool báo "chưa nhận ra" sau khi game cập nhật, bấm nút dưới để sao chép báo cáo rồi dán cho Claude: đủ thông tin để sửa tool.</div></div><div class="vk-card"><h3>Nhật ký cập nhật của game</h3><div id="vk-upl" class="vk-mu">Đang tải…</div></div>`;
-    box.innerHTML = h;
+    box.innerHTML = h + syHtml(); syBind(box);
     lsSet('vkkm.bundle', bundle);
     layNhatKy().then((r) => {
       const el = box.querySelector('#vk-upl'); if (!el) return;
@@ -1046,7 +1127,7 @@ const TOOL_VER = 'v2026.11.20';
     const nv = nvNow(), c0 = C();
     const tac = nv.kinhMach.trangThai.map((s, i) => (s === 'tac' ? i : -1)).filter((i) => i >= 0);
     const mo = (nv.kinhMach.cho && nv.kinhMach.cho.mo) || 0;
-    const KT = [['cur', 'Hiện tại'], ['opt', 'Xếp tối ưu'], ['buy', 'Nên mua'], ['cat', 'Danh mục'], ['ev', 'Sự kiện'], ['bc', 'Bí cảnh'], ['nt', 'Bản mệnh'], ['up', 'Cập nhật']];
+    const KT = [['cur', 'Hiện tại'], ['opt', 'Xếp tối ưu'], ['buy', 'Nên mua'], ['cat', 'Danh mục'], ['ev', 'Sự kiện'], ['bc', 'Bí cảnh'], ['nt', 'Bản mệnh'], ['up', 'Đồng bộ']];
     S.kt = S.kt || 'opt';
     body.innerHTML = `
     <div class="vk-card" style="margin-bottom:8px"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:14px">Mục tiêu:</b> <select class="vk-sel" id="vk-mode"><option value="bal">Cân bằng (đánh + tu luyện)</option><option value="danh">Ưu tiên đánh nhau</option><option value="tu">Ưu tiên tu luyện / đột phá</option></select></div><label style="display:flex;gap:6px;align-items:center;margin-top:6px;font-size:13px"><input type="checkbox" id="vk-lt" ${S.lt ? 'checked' : ''}> Tính khi đã lĩnh ngộ xong (xếp lâu dài)</label><div class="vk-mu" style="font-size:12px;margin-top:4px">Áp dụng cho Xếp tối ưu, Nên mua và Thử món ở Danh mục. Bỏ tick = tính theo sức hiện tại (món mới chỉ 50%).</div></div>
