@@ -1,7 +1,7 @@
 // Trợ lý Kinh mạch — Vạn Kiếp Tu Tiên (bản tách riêng chỉ có phần kinh mạch).
 // Tách từ vk-tro-ly.js v2.2.0. Chủ yếu tính toán; chỉ tự xếp kinh mạch khi bạn bấm nút. Không gửi dữ liệu của bạn ra ngoài (chỉ tải nhật ký cập nhật công khai của game).
 // Chạy trong trang game: tải lại code game thành bản sao để dùng hàm tính của chính game.
-const TOOL_VER = 'v2026.11.13';
+const TOOL_VER = 'v2026.11.14';
 
 (() => {
   if (window.__vkKM) { window.__vkKM.show(); return; }
@@ -173,7 +173,7 @@ const TOOL_VER = 'v2026.11.13';
     const K = S.core, c = C();
     // Dùng chung bộ nhớ đệm giữa các lần tìm có cùng kinh mạch, nhân vật và chế độ (bỏ qua túi đồ: chỉ cách xếp mới đổi kết quả)
     S.ec = S.ec || new Map();
-    const sig = mode + '|' + (S.style || 'auto') + '|' + (S.llp || 'auto') + '|' + JSON.stringify({ ...nv0, tuiDo: 0, kinhMach: { ...nv0.kinhMach, manh: 0 } });
+    const sig = mode + '|' + (S.style || 'auto') + '|' + 'min|' + JSON.stringify({ ...nv0, tuiDo: 0, kinhMach: { ...nv0.kinhMach, manh: 0 } });
     let cache = S.ec.get(sig); if (!cache) { cache = new Map(); S.ec.set(sig, cache); if (S.ec.size > 12) S.ec.delete(S.ec.keys().next().value); }
     // full=true: bắt buộc đánh đủ trận mẫu (kết quả cuối). Mặc định có thể bỏ dở trận khi cách xếp chắc chắn không thể vượt cách tốt nhất đã thấy.
     return (manh, full) => {
@@ -189,7 +189,7 @@ const TOOL_VER = 'v2026.11.13';
       const atk = (P.chieu || []).filter((x) => x.dang && x.phi > 0).map((x) => x.phi);
       const minCost = atk.length ? Math.min(...atk) : 0;
       const dead = R.manh.filter((m) => m && !m.thong).length;
-      const wLL = mode === 'tu' ? 1 : mode === 'danh' ? 5 : 4, lp = mode === 'tu' ? 'min' : (S.llp || 'auto');
+      const wLL = mode === 'tu' ? 1 : mode === 'danh' ? 5 : 4, lp = 'min';
       const sus = (x) => x.phi / (1 + (x.hoi > 0 ? x.hoi : 0)); // linh lực cần mỗi lượt để ra chiêu đó liên tục (chiêu hồi chiêu k lượt chỉ ra 1 lần mỗi k+1 lượt)
       let req = minCost;
       if (lp !== 'min') {
@@ -1028,7 +1028,7 @@ const TOOL_VER = 'v2026.11.13';
       <div class="vk-mu" style="font-size:13px">Tool thử hàng nghìn cách xếp các món trong túi, đánh thử ${'9'} trận mẫu cùng cảnh giới cho mỗi cách và giữ cách tốt nhất.</div>
       <div style="margin:8px 0"><select class="vk-sel" id="vk-it"><option value="auto" selected>Tự động</option><option value="1500">Nhanh</option><option value="3000">Vừa</option><option value="6000">Kỹ (lâu)</option></select></div>
       <div style="margin:6px 0"><span class="vk-mu" style="font-size:13px">Lối tu:</span> <select class="vk-sel" id="vk-style"><option value="auto">Tự động</option><optgroup label="Chính đạo"><option value="s:the">Thể tu</option><option value="s:phat">Phật tu</option><option value="s:kiem">Kiếm tu</option></optgroup><optgroup label="Tà đạo"><option value="s:ma">Ma tu</option><option value="s:doc">Độc cổ</option><option value="s:hop_hoan">Hợp hoan</option><option value="s:quy">Quỷ tu</option><option value="s:thi">Luyện thi</option></optgroup><optgroup label="Nghề"><option value="s:dan">Đan tu</option><option value="s:tran">Trận tu</option><option value="s:phu">Phù tu</option><option value="s:khi">Luyện bảo</option></optgroup><optgroup label="Theo hệ linh căn"><option value="e:kim">Kim tu</option><option value="e:moc">Mộc tu</option><option value="e:thuy">Thủy tu</option><option value="e:hoa">Hỏa tu</option><option value="e:tho">Thổ tu</option><option value="e:bang">Băng tu</option><option value="e:loi">Lôi tu</option><option value="e:phong">Phong tu</option><option value="e:am">Ám tu</option></optgroup><optgroup label="Theo kiểu đánh"><option value="cong">Công kích mạnh</option><option value="hp">Trâu bò (khí huyết + hộ thể)</option><option value="khong">Khống chế</option><option value="hoi">Hồi phục / hộ thuẫn</option><option value="dot">Hiệu ứng (độc, chảy máu, thiêu, hàn)</option></optgroup></select>
-      <span class="vk-mu" style="font-size:13px">Linh lực:</span> <select class="vk-sel" id="vk-llp"><option value="auto">Tự động: vừa đủ 2 chiêu công mạnh nhất (tính hồi chiêu)</option><option value="min">Đủ chiêu rẻ nhất</option><option value="one">Đủ chiêu công mạnh nhất mỗi lượt</option><option value="two">Đủ 2 chiêu công mỗi lượt</option><option value="all">Đủ mọi chiêu đang xếp mỗi lượt</option></select></div>
+</div>
       <button class="vk-btn" id="vk-go">Bắt đầu xếp</button>
       ${progressHtml('vk-pr')}<div id="vk-out"></div></div>
     <div class="vk-card"><h3>Hai bộ kinh mạch: bế quan và đánh</h3>
@@ -1095,7 +1095,7 @@ const TOOL_VER = 'v2026.11.13';
       } catch (e) { console.error(e); body.querySelector('#vk-out').innerHTML = errBox(e); }
       ev.target.disabled = false;
     };
-    ['style', 'llp'].forEach((k) => { const el = body.querySelector('#vk-' + k); if (!el) return; el.value = S[k] || 'auto'; el.onchange = () => { S[k] = el.value; S.best = null; const o = body.querySelector('#vk-out'); if (o) o.innerHTML = ''; }; });
+    ['style'].forEach((k) => { const el = body.querySelector('#vk-' + k); if (!el) return; el.value = S[k] || 'auto'; el.onchange = () => { S[k] = el.value; S.best = null; const o = body.querySelector('#vk-out'); if (o) o.innerHTML = ''; }; });
     body.querySelector('#vk-lt').addEventListener('change', (e) => { S.lt = e.target.checked; S.ec = null; S.best = null; render(); });
     bindBuy(nv); bindCat(nv); bindDoi(nv);
     try { renderEvent(nv); } catch (e) { console.error(e); body.querySelector('#vk-ev').innerHTML = errBox(e); }
@@ -1148,7 +1148,7 @@ const TOOL_VER = 'v2026.11.13';
   }
   async function optimizeMode(nv, mode, iters, prog, f0, f1, label) {
     // Bộ tu luyện không theo lối tu / mức linh lực đánh nhau
-    if (mode === 'tu' && ((S.style && S.style !== 'auto') || (S.llp && S.llp !== 'min'))) { const o = [S.style, S.llp]; S.style = 'auto'; S.llp = 'min'; try { return await optimizeMode(nv, mode, iters, prog, f0, f1, label); } finally { [S.style, S.llp] = o; } }
+    if (mode === 'tu' && S.style && S.style !== 'auto') { const o = S.style; S.style = 'auto'; try { return await optimizeMode(nv, mode, iters, prog, f0, f1, label); } finally { S.style = o; } }
     const nv0 = clone(nv); nv0.kinhMach.manh = [];
     const P = (a, b) => (f) => prog(f0 + (f1 - f0) * (a + (b - a) * f), label);
     P(0, 0)(0); const g0 = await greedy(nv0, mode);
@@ -1236,11 +1236,7 @@ const TOOL_VER = 'v2026.11.13';
     if (!sk.length) return `<div class="vk-mu" style="font-size:12px;margin-top:6px">Linh lực hồi ${num(ll)}/lượt (tối đa ${num(mx)}). Chưa có chiêu tốn linh lực nào.</div>`;
     let left = ll, n = 0; for (const x of sk) { if (left >= x.phi) { left -= x.phi; n++; } }
     const ok = n >= Math.min(2, sk.length);
-    const sus = (x) => x.phi / (1 + (x.hoi > 0 ? x.hoi : 0));
-    const atk = (P.chieu || []).filter((x) => x.dang === 'cong' && x.phi > 0).sort((a, b) => (b.uy || 0) - (a.uy || 0)).slice(0, 2);
-    const need = atk.reduce((a, x) => a + sus(x), 0);
-    const verdict = need ? ` Để ra liên tục ${atk.length === 1 ? 'chiêu công mạnh nhất' : '2 chiêu công mạnh nhất'} (${atk.map((x) => esc(x.ten)).join(', ')}) cần khoảng <b>${num(need, 0)}</b> linh lực/lượt: ${ll >= need * 1.5 ? '<b class="vk-mu">dư khá nhiều, có thể đổi bớt linh lực lấy chỉ số khác</b>' : ll >= need ? '<b class="vk-ok">vừa đủ</b>' : `<b class="vk-bad">thiếu ${num(need - ll, 0)}/lượt</b> (vào trận đầy trữ 3 lượt nên đầu trận vẫn ổn)`}.` : '';
-    return `<div style="font-size:13px;margin-top:8px"><b>Linh lực:</b> hồi ${num(ll)}/lượt (tối đa ${num(mx)}, vào trận đầy trữ 3 lượt). Chiêu: ${sk.map((x) => `${esc(x.ten)} <span class="vk-mu">${num(x.phi, 0)}</span>`).join(', ')}. Mỗi lượt ra được <b class="${ok ? 'vk-ok' : 'vk-bad'}">${n}/${sk.length}</b> chiêu.${verdict}</div>`;
+    return `<div style="font-size:13px;margin-top:8px"><b>Linh lực:</b> hồi ${num(ll)}/lượt (tối đa ${num(mx)}, vào trận đầy trữ 3 lượt). Chiêu: ${sk.map((x) => `${esc(x.ten)} <span class="vk-mu">${num(x.phi, 0)}</span>`).join(', ')}. Mỗi lượt ra được <b class="${ok ? 'vk-ok' : 'vk-bad'}">${n}/${sk.length}</b> chiêu.</div>`;
   }
   const LOI_GHI = {
     the: 'Cần ít nhất một tâm pháp luyện thể (nhãn thể) đang thông thì đồ thể tu mới đánh bằng sức thân.',
