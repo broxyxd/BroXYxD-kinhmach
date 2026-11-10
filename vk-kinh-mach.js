@@ -1,7 +1,7 @@
 // Trợ lý Kinh mạch — Vạn Kiếp Tu Tiên (bản tách riêng chỉ có phần kinh mạch).
 // Tách từ vk-tro-ly.js v2.2.0. Chủ yếu tính toán; chỉ tự xếp kinh mạch khi bạn bấm nút. Không gửi dữ liệu của bạn ra ngoài (chỉ tải nhật ký cập nhật công khai của game).
 // Chạy trong trang game: tải lại code game thành bản sao để dùng hàm tính của chính game.
-const TOOL_VER = 'v2026.11.16';
+const TOOL_VER = 'v2026.11.17';
 
 (() => {
   if (window.__vkKM) { window.__vkKM.show(); return; }
@@ -874,7 +874,8 @@ const TOOL_VER = 'v2026.11.16';
 
   // ───────────────────────── Lịch mở bí cảnh (tính đúng công thức của game từ seed kiếp này) ─────────────────────────
   // ───────────────────────── Bản mệnh pháp bảo ─────────────────────────
-  const VAN = { 'van.thieu': 'Thiêu đốt', 'van.doc': 'Trúng độc', 'van.han': 'Hàn khí', 'van.troi': 'Trói', 'van.kim_chung': 'Kim chung (hộ thuẫn)', 'van.hut_huyet': 'Hút huyết', 'van.liet': 'Liệt (sát thương)' };
+  const VAN = { 'van.thieu': 'Thiêu đốt', 'van.doc': 'Trúng độc', 'van.han': 'Hàn khí', 'van.huyet': 'Xuất huyết', 'van.troi': 'Trói', 'van.kim_chung': 'Kim Chung (dựng khiên)', 'van.hut_huyet': 'Hút Huyết', 'van.liet': 'Liệt (tăng uy chiêu)', 'van.phagiap': 'Phá Giáp', 'van.lienhoan': 'Liên Hoàn (đánh thêm đòn)', 'van.ho_the': 'Hộ Thể', 'van.tu_linh': 'Tụ Linh (linh lực mỗi lượt)', 'van.phan_anh': 'Phân Ảnh (chiêu lan)', 'van.van_anh': 'Vạn Ảnh (chiêu toàn trận)', 'van.quy_nhat': 'Quy Nhất (thu về đơn)', 'van.uan_bao': 'Uẩn Bảo', 'van.minh_than': 'Minh Thần (thần thức)', 'van.luyen_cot': 'Luyện Cốt (căn cốt)', 'van.khinh_than': 'Khinh Thân (thân pháp)', 'van.phuc_van': 'Phúc Vận (khí vận)', 'van.tinh_tam': 'Tĩnh Tâm (đạo tâm)', 'van.nhiem_kim': 'Nhiễm Kim', 'van.nhiem_moc': 'Nhiễm Mộc', 'van.nhiem_thuy': 'Nhiễm Thủy', 'van.nhiem_hoa': 'Nhiễm Hỏa', 'van.nhiem_tho': 'Nhiễm Thổ' };
+  const tangNatal = (e) => (e >= 200 ? 'Viên mãn' : e >= 90 ? 3 : e >= 30 ? 2 : 1);
   const vanTen = (id) => VAN[id] || String(id || '').replace(/^van\./, '');
   // Chú giải từng thuộc tính của bản mệnh (đọc từ code game; con số có thể đổi theo bản cập nhật)
   const natalGlossary = () => {
@@ -899,7 +900,7 @@ const TOOL_VER = 'v2026.11.16';
     let h = '<div class="vk-card"><h3>Bản mệnh pháp bảo</h3><div class="vk-mu" style="font-size:13px">Bản mệnh là một pháp khí (phẩm Hoàng trở lên) được tế luyện từ Trúc Cơ. Món đó biến mất khỏi túi và không còn đặt lên kinh mạch được. Đổi lại nó cho một chiêu riêng, một khiếu bẩm sinh và các văn khắc, càng dùng càng mạnh (tâm huyết). Tế luyện tốn thọ nguyên và linh thạch, có thể thất bại; nếu thất bại món vẫn còn nhưng thọ nguyên đã mất.</div>';
     if (nat) {
       const it = Cc.items.get(nat.item);
-      h += `<table class="vk-t" style="margin-top:8px"><tr><td>Bản mệnh</td><td><b>${esc(it ? it.ten : nat.item)}</b></td></tr><tr><td>Phẩm</td><td>${PHAM[nat.grade] || nat.grade}${nat.base && nat.base !== nat.grade ? ` (gốc ${PHAM[nat.base] || nat.base})` : ''}</td></tr><tr><td>Tâm huyết</td><td>${nat.exp}</td></tr><tr><td>Khiếu bẩm sinh</td><td>${esc(vanTen(nat.innate && nat.innate.id))} (cấp ${(nat.innate && nat.innate.level) || 0})</td></tr><tr><td>Văn đã khắc</td><td>${(nat.runes || []).length ? nat.runes.map((r) => esc(vanTen(r))).join(', ') : '<span class="vk-mu">chưa có</span>'}</td></tr></table>` +
+      h += `<table class="vk-t" style="margin-top:8px"><tr><td>Bản mệnh</td><td><b>${esc(it ? it.ten : nat.item)}</b></td></tr><tr><td>Phẩm</td><td>${PHAM[nat.grade] || nat.grade}${nat.base && nat.base !== nat.grade ? ` (gốc ${PHAM[nat.base] || nat.base})` : ''}<div class="vk-mu" style="font-size:12px">${nat.base && nat.grade >= nat.base + 2 ? 'Đã nâng tối đa +2 giai.' : `Có thể nâng thêm tối đa ${Math.max(0, (nat.base || nat.grade) + 2 - nat.grade)} giai khi Viên mãn và cảnh giới đủ.`}</div></td></tr><tr><td>Tâm huyết</td><td>${Math.round(nat.exp * 10) / 10}<div class="vk-mu" style="font-size:12px">Tầng ${tangNatal(nat.exp)} (theo mốc 30 / 90 / 200 trong nhật ký game). ${nat.exp >= 200 ? 'Đã Viên mãn.' : 'Mốc tiếp theo: ' + [30, 90, 200].find((m) => nat.exp < m) + '.'}</div></td></tr><tr><td>Khiếu bẩm sinh</td><td>${esc(vanTen(nat.innate && nat.innate.id))} (cấp ${(nat.innate && nat.innate.level) || 0})<div class="vk-mu" style="font-size:12px">Văn gắn sẵn lúc tế luyện, nâng cấp bằng cách nuốt.</div></td></tr><tr><td>Văn đã khắc</td><td>${(nat.runes || []).length ? nat.runes.map((r) => esc(vanTen(r))).join(', ') : '<span class="vk-mu">chưa có</span>'}<div class="vk-mu" style="font-size:12px">Ô văn mở thêm theo tầng (tối đa 4).</div></td></tr></table>` +
         '<div class="vk-mu" style="font-size:12px;margin-top:6px">Bạn đã có bản mệnh. Muốn đổi món khác phải "Hóa bản mệnh" trong game trước. Các bảng xếp kinh mạch của tool đã tính sẵn chiêu và chỉ số của bản mệnh.</div>' + natalGlossary() + '</div>';
       box.innerHTML = h; return;
     }
