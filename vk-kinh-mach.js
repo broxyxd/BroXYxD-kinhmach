@@ -1,7 +1,7 @@
 // Trợ lý Kinh mạch — Vạn Kiếp Tu Tiên (bản tách riêng chỉ có phần kinh mạch).
 // Tách từ vk-tro-ly.js v2.2.0. Chủ yếu tính toán; chỉ tự xếp kinh mạch khi bạn bấm nút. Không gửi dữ liệu của bạn ra ngoài (chỉ tải nhật ký cập nhật công khai của game).
 // Chạy trong trang game: tải lại code game thành bản sao để dùng hàm tính của chính game.
-const TOOL_VER = 'v2026.11.21';
+const TOOL_VER = 'v2026.11.22';
 
 (() => {
   if (window.__vkKM) { window.__vkKM.show(); return; }
@@ -210,6 +210,22 @@ const TOOL_VER = 'v2026.11.21';
       const atk = (P.chieu || []).filter((x) => x.dang && x.phi > 0).map((x) => x.phi);
       const minCost = atk.length ? Math.min(...atk) : 0;
       const dead = R.manh.filter((m) => m && !m.thong).length;
+      if (mode === 'wiki') {
+        // Chấm theo thứ tự ưu tiên của mục "Tư vấn xếp đồ" trong wiki (từ cao xuống thấp, mỗi tầng lấn át tầng dưới):
+        // 0 điểm nghịch → hộ thể tới trần 60% → linh lực đủ ra mọi chiêu → có chiêu hồi máu → tổng uy lực chiêu gây dame (công + khống chế) cao nhất.
+        const ch = P.chieu || [];
+        const sumPhi = ch.filter((x) => x.dang && x.phi > 0).reduce((a, x) => a + x.phi, 0);
+        const heal = ch.some((x) => x.dang === 'hoi_phuc');
+        const dmg = ch.filter((x) => x.dang === 'cong' || x.dang === 'khong_che').reduce((a, x) => a + (x.uy || 0), 0);
+        const ho = Math.min(0.6, P.hoThe || 0) / 0.6;
+        const llOk = sumPhi > 0 ? Math.min(1, ll / sumPhi) : 1;
+        const sw = -1e8 * ng - 1e7 * dead + 1e7 * ho + 1e6 * llOk + 1e5 * (heal ? 1 : 0) + dmg;
+        let winsW = 0;
+        if (full) for (const { E } of enemies) { if (fight(P, E).thang) winsW++; }
+        const outW = { s: sw, wins: winsW, P, R, pruned: !full };
+        cache.set(key, outW);
+        return outW;
+      }
       const wLL = mode === 'tu' ? 1 : mode === 'danh' ? 5 : 4;
       // Bộ tu luyện: chỉ cần đủ ra chiêu rẻ nhất. Bộ đánh / cân bằng: nhắm mức linh lực để ra liên tục chiêu chủ lực của lối tu,
       // nhưng không đòi quá mức đồ trong rương có thể đạt (trần = 85% mức linh lực cao nhất đã thấy khi tìm), để không hy sinh chỉ số khác vì một mục tiêu không thể với tới.
@@ -1130,7 +1146,7 @@ const TOOL_VER = 'v2026.11.21';
     const KT = [['cur', 'Hiện tại'], ['opt', 'Xếp tối ưu'], ['buy', 'Nên mua'], ['cat', 'Danh mục'], ['ev', 'Sự kiện'], ['bc', 'Bí cảnh'], ['nt', 'Bản mệnh'], ['up', 'Đồng bộ']];
     S.kt = S.kt || 'opt';
     body.innerHTML = `
-    <div class="vk-card" style="margin-bottom:8px"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:14px">Mục tiêu:</b> <select class="vk-sel" id="vk-mode"><option value="bal">Cân bằng (đánh + tu luyện)</option><option value="danh">Ưu tiên đánh nhau</option><option value="tu">Ưu tiên tu luyện / đột phá</option></select></div><label style="display:flex;gap:6px;align-items:center;margin-top:6px;font-size:13px"><input type="checkbox" id="vk-lt" ${S.lt ? 'checked' : ''}> Tính khi đã lĩnh ngộ xong (xếp lâu dài)</label><div class="vk-mu" style="font-size:12px;margin-top:4px">Áp dụng cho Xếp tối ưu, Nên mua và Thử món ở Danh mục. Bỏ tick = tính theo sức hiện tại (món mới chỉ 50%).</div></div>
+    <div class="vk-card" style="margin-bottom:8px"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:14px">Mục tiêu:</b> <select class="vk-sel" id="vk-mode"><option value="bal">Cân bằng (đánh + tu luyện)</option><option value="danh">Ưu tiên đánh nhau</option><option value="tu">Ưu tiên tu luyện / đột phá</option><option value="wiki">Theo wiki: hộ thể → linh lực → hồi máu → sát thương</option></select></div><label style="display:flex;gap:6px;align-items:center;margin-top:6px;font-size:13px"><input type="checkbox" id="vk-lt" ${S.lt ? 'checked' : ''}> Tính khi đã lĩnh ngộ xong (xếp lâu dài)</label><div class="vk-mu" style="font-size:12px;margin-top:4px">Áp dụng cho Xếp tối ưu, Nên mua và Thử món ở Danh mục. Bỏ tick = tính theo sức hiện tại (món mới chỉ 50%).</div></div>
     <div id="vk-kt" style="display:flex;gap:6px;margin:0 0 10px">${KT.map(([k, t]) => `<button class="vk-btn sec" data-kt="${k}" style="flex:1;margin:0;padding:8px 4px">${t}</button>`).join('')}</div>
     <section data-ks="cur">
     <div class="vk-card"><h3>Đang xếp trong game</h3><div id="vk-cur"></div><div id="vk-curst"></div></div>
