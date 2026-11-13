@@ -1,7 +1,7 @@
 // Trợ lý Kinh mạch — Vạn Kiếp Tu Tiên (bản tách riêng chỉ có phần kinh mạch).
 // Tách từ vk-tro-ly.js v2.2.0. Chủ yếu tính toán; chỉ tự xếp kinh mạch khi bạn bấm nút. Không gửi dữ liệu của bạn ra ngoài (chỉ tải nhật ký cập nhật công khai của game).
 // Chạy trong trang game: tải lại code game thành bản sao để dùng hàm tính của chính game.
-const TOOL_VER = 'v2026.11.22';
+const TOOL_VER = 'v2026.11.23';
 
 (() => {
   if (window.__vkKM) { window.__vkKM.show(); return; }
@@ -258,7 +258,13 @@ const TOOL_VER = 'v2026.11.22';
       // Điểm nghịch: mỗi điểm −3% tỉ lệ đột phá (tối đa −15%), thêm phản phệ trong trận (trận mẫu đã tính).
       let rest, fc = 1;
       if (mode === 'tu') { rest = 400 * toc + 300 * dp + thong - 40 * ng + llScore; fc = 0.3; }
-      else if (mode === 'danh') rest = 0.2 * thong - 3 * ng + llScore;
+      else if (mode === 'danh') {
+        // Bộ đánh: thưởng thêm cho chiêu công mạnh nhất (dồn huyệt, màu ô, sinh khắc, kinh lộ vào một món chủ lực) so với mức gặp đầu tiên, tối đa gấp 3.
+        const top = Math.max(0, ...(P.chieu || []).filter((x) => x.dang === 'cong').map((x) => x.uy || 0));
+        if (!(cache.refTop > 0) && top > 0) cache.refTop = top;
+        const tb = cache.refTop > 0 ? 90 * Math.min(3, top / cache.refTop) : 0;
+        rest = 0.2 * thong - 3 * ng + llScore + tb;
+      }
       else rest = 30 * toc + 20 * dp + 0.2 * thong - 10 * ng + llScore;
       rest += sb;
       // Đánh trận mẫu; mỗi trận tối đa 175 điểm nên có thể dừng sớm khi tổng tối đa còn lại cũng không thể bằng cách tốt nhất đã thấy
@@ -1468,6 +1474,8 @@ const TOOL_VER = 'v2026.11.22';
     else if (LOI_GHI[k]) h += `<br><span class="vk-mu">${LOI_GHI[k]}</span>`;
     return h + '</div>';
   }
+  // Danh sách chiêu và uy lực (để so hai cách xếp)
+  const chieuList = (P) => ((P && P.chieu) || []).filter((x) => x.dang && x.ten).slice().sort((a, b) => (b.uy || 0) - (a.uy || 0)).map((x) => `${esc(x.ten)} (${num(x.uy || 0, 0)})`).join(', ');
   function showBest(nv) {
     const { cur, best } = S.best; const out = body.querySelector('#vk-out');
     if (!out) return;
@@ -1476,6 +1484,7 @@ const TOOL_VER = 'v2026.11.22';
       ((best.R && best.R.diemNghich) ? `<div class="vk-mu" style="font-size:12px;margin-top:6px">Cách này còn ${best.R.diemNghich} điểm nghịch (−${Math.min(15, 3 * best.R.diemNghich)}% tỉ lệ đột phá). Lúc chuẩn bị đột phá, chọn chế độ "Ưu tiên tu luyện / đột phá" để tool ưu tiên xóa điểm nghịch.</div>` : '') +
       '<div class="vk-mu" style="font-size:12px;margin-top:6px">Trận mẫu: 9 loại quái cùng cảnh giới với bạn, ở tiểu cảnh giới quanh mức của bạn (thấp hơn 1, bằng, cao hơn 1).</div>' + pieceTable(best.R) + sellAdvice(nv, best);
     out.insertAdjacentHTML('beforeend', loiInfo(nv, best) + llInfo(best.P));
+    try { const a = chieuList(cur.P), b = chieuList(best.P); if (b) out.insertAdjacentHTML('beforeend', `<div class="vk-card" style="margin:6px 0"><b>Uy lực từng chiêu</b> <span class="vk-mu" style="font-size:12px">(chiêu mạnh nhất trước)</span><table class="vk-t"><tr><td>Đang xếp</td><td>${a || '—'}</td></tr><tr><td><b>Cách mới</b></td><td><b>${b}</b></td></tr></table></div>`); } catch (e) { /* bỏ qua */ }
     try {
       const Cc = C(), ex = Object.keys(nv.tuiDo).filter((id) => nv.tuiDo[id] > 0).map((id) => Cc.items.get(id)).filter((it) => it && (it.loai === 'cong_phap' || it.loai === 'phap_khi') && it.hinh && !daoOk(it, nv));
       if (ex.length) out.insertAdjacentHTML('beforeend', `<div class="vk-mu" style="font-size:12px;margin-top:6px">Đã loại ${ex.length} món tà đạo khỏi cách xếp (${ex.slice(0, 6).map((it) => esc(it.ten)).join(', ')}${ex.length > 6 ? '…' : ''}). Muốn dùng thì đổi ô "Đạo" sang "Cho phép cả tà đạo".</div>`);
