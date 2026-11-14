@@ -1,7 +1,7 @@
 // Trợ lý Kinh mạch — Vạn Kiếp Tu Tiên (bản tách riêng chỉ có phần kinh mạch).
 // Tách từ vk-tro-ly.js v2.2.0. Chủ yếu tính toán; chỉ tự xếp kinh mạch khi bạn bấm nút. Không gửi dữ liệu của bạn ra ngoài (chỉ tải nhật ký cập nhật công khai của game).
 // Chạy trong trang game: tải lại code game thành bản sao để dùng hàm tính của chính game.
-const TOOL_VER = 'v2026.11.23';
+const TOOL_VER = 'v2026.11.24';
 
 (() => {
   if (window.__vkKM) { window.__vkKM.show(); return; }
@@ -194,7 +194,7 @@ const TOOL_VER = 'v2026.11.23';
     const K = S.core, c = C();
     // Dùng chung bộ nhớ đệm giữa các lần tìm có cùng kinh mạch, nhân vật và chế độ (bỏ qua túi đồ: chỉ cách xếp mới đổi kết quả)
     S.ec = S.ec || new Map();
-    const sig = mode + '|' + (S.style || 'auto') + '|' + 'min|' + JSON.stringify({ ...nv0, tuiDo: 0, kinhMach: { ...nv0.kinhMach, manh: 0 } });
+    const sig = mode + '|' + (S.style || 'auto') + '|' + (S.ratio || 'free') + '|' + 'min|' + JSON.stringify({ ...nv0, tuiDo: 0, kinhMach: { ...nv0.kinhMach, manh: 0 } });
     let cache = S.ec.get(sig); if (!cache) { cache = new Map(); S.ec.set(sig, cache); if (S.ec.size > 12) S.ec.delete(S.ec.keys().next().value); }
     // full=true: bắt buộc đánh đủ trận mẫu (kết quả cuối). Mặc định có thể bỏ dở trận khi cách xếp chắc chắn không thể vượt cách tốt nhất đã thấy.
     return (manh, full) => {
@@ -210,6 +210,13 @@ const TOOL_VER = 'v2026.11.23';
       const atk = (P.chieu || []).filter((x) => x.dang && x.phi > 0).map((x) => x.phi);
       const minCost = atk.length ? Math.min(...atk) : 0;
       const dead = R.manh.filter((m) => m && !m.thong).length;
+      // Tỉ lệ 5:5 giữa pháp khí và công pháp (tính theo số món đã thông, tâm pháp/đấu pháp tính là công pháp): chênh quá 1 món bị trừ điểm.
+      let balPen = 0;
+      if (S.ratio === '55') {
+        let nPK = 0, nCP = 0;
+        R.manh.forEach((rm, i) => { if (!rm || !rm.thong) return; const itx = c.items.get(manh[i].m.item); if (!itx) return; if (itx.loai === 'phap_khi') nPK++; else nCP++; });
+        balPen = 80 * Math.max(0, Math.abs(nPK - nCP) - 1);
+      }
       if (mode === 'wiki') {
         // Chấm theo thứ tự ưu tiên của mục "Tư vấn xếp đồ" trong wiki (từ cao xuống thấp, mỗi tầng lấn át tầng dưới):
         // 0 điểm nghịch → hộ thể tới trần 60% → linh lực đủ ra mọi chiêu → có chiêu hồi máu → tổng uy lực chiêu gây dame (công + khống chế) cao nhất.
@@ -219,7 +226,7 @@ const TOOL_VER = 'v2026.11.23';
         const dmg = ch.filter((x) => x.dang === 'cong' || x.dang === 'khong_che').reduce((a, x) => a + (x.uy || 0), 0);
         const ho = Math.min(0.6, P.hoThe || 0) / 0.6;
         const llOk = sumPhi > 0 ? Math.min(1, ll / sumPhi) : 1;
-        const sw = -1e8 * ng - 1e7 * dead + 1e7 * ho + 1e6 * llOk + 1e5 * (heal ? 1 : 0) + dmg;
+        const sw = -1e8 * ng - 1e7 * dead + 1e7 * ho + 1e6 * llOk + 1e5 * (heal ? 1 : 0) + dmg - balPen * 1e3;
         let winsW = 0;
         if (full) for (const { E } of enemies) { if (fight(P, E).thang) winsW++; }
         const outW = { s: sw, wins: winsW, P, R, pruned: !full };
@@ -279,7 +286,7 @@ const TOOL_VER = 'v2026.11.23';
         k++;
         if (thr !== undefined && k < enemies.length && rest + fc * (fightScore + (enemies.length - k) * 175) < thr - 1) { pruned = true; break; }
       }
-      const s = rest + fc * fightScore;
+      const s = rest + fc * fightScore - balPen;
       if (!pruned && !(s <= cache.bestS)) cache.bestS = s;
       const out = { s, wins, P, R, pruned };
       cache.set(key, out);
@@ -1170,7 +1177,7 @@ const TOOL_VER = 'v2026.11.23';
     <div class="vk-card"><h3>Xếp kinh mạch tối ưu</h3>
       <div class="vk-mu" style="font-size:13px">Tool thử hàng nghìn cách xếp các món trong túi, đánh thử ${'9'} trận mẫu cùng cảnh giới cho mỗi cách và giữ cách tốt nhất.</div>
       <div style="margin:8px 0"><select class="vk-sel" id="vk-it"><option value="auto" selected>Tự động</option><option value="1500">Nhanh</option><option value="3000">Vừa</option><option value="6000">Kỹ (lâu)</option></select></div>
-      <div style="margin:6px 0"><span class="vk-mu" style="font-size:13px">Lối tu:</span> <select class="vk-sel" id="vk-style"><option value="auto">Tự động</option><optgroup label="Chính đạo"><option value="s:the">Thể tu</option><option value="s:phat">Phật tu</option><option value="s:kiem">Kiếm tu</option></optgroup><optgroup label="Tà đạo"><option value="s:ma">Ma tu</option><option value="s:doc">Độc cổ</option><option value="s:hop_hoan">Hợp hoan</option><option value="s:quy">Quỷ tu</option><option value="s:thi">Luyện thi</option></optgroup><optgroup label="Nghề"><option value="s:dan">Đan tu</option><option value="s:tran">Trận tu</option><option value="s:phu">Phù tu</option><option value="s:khi">Luyện bảo</option></optgroup><optgroup label="Theo hệ linh căn"><option value="e:kim">Kim tu</option><option value="e:moc">Mộc tu</option><option value="e:thuy">Thủy tu</option><option value="e:hoa">Hỏa tu</option><option value="e:tho">Thổ tu</option><option value="e:bang">Băng tu</option><option value="e:loi">Lôi tu</option><option value="e:phong">Phong tu</option><option value="e:am">Ám tu</option></optgroup><optgroup label="Theo kiểu đánh"><option value="cong">Công kích mạnh</option><option value="hp">Trâu bò (khí huyết + hộ thể)</option><option value="khong">Khống chế</option><option value="hoi">Hồi phục / hộ thuẫn</option><option value="dot">Hiệu ứng (độc, chảy máu, thiêu, hàn)</option></optgroup></select> <span class="vk-mu" style="font-size:13px">Đạo:</span> <select class="vk-sel" id="vk-dao"><option value="auto">Tự động (theo nhân vật)</option><option value="chinh">Chỉ chính đạo (loại đồ tà)</option><option value="all">Cho phép cả tà đạo</option></select>
+      <div style="margin:6px 0"><span class="vk-mu" style="font-size:13px">Lối tu:</span> <select class="vk-sel" id="vk-style"><option value="auto">Tự động</option><optgroup label="Chính đạo"><option value="s:the">Thể tu</option><option value="s:phat">Phật tu</option><option value="s:kiem">Kiếm tu</option></optgroup><optgroup label="Tà đạo"><option value="s:ma">Ma tu</option><option value="s:doc">Độc cổ</option><option value="s:hop_hoan">Hợp hoan</option><option value="s:quy">Quỷ tu</option><option value="s:thi">Luyện thi</option></optgroup><optgroup label="Nghề"><option value="s:dan">Đan tu</option><option value="s:tran">Trận tu</option><option value="s:phu">Phù tu</option><option value="s:khi">Luyện bảo</option></optgroup><optgroup label="Theo hệ linh căn"><option value="e:kim">Kim tu</option><option value="e:moc">Mộc tu</option><option value="e:thuy">Thủy tu</option><option value="e:hoa">Hỏa tu</option><option value="e:tho">Thổ tu</option><option value="e:bang">Băng tu</option><option value="e:loi">Lôi tu</option><option value="e:phong">Phong tu</option><option value="e:am">Ám tu</option></optgroup><optgroup label="Theo kiểu đánh"><option value="cong">Công kích mạnh</option><option value="hp">Trâu bò (khí huyết + hộ thể)</option><option value="khong">Khống chế</option><option value="hoi">Hồi phục / hộ thuẫn</option><option value="dot">Hiệu ứng (độc, chảy máu, thiêu, hàn)</option></optgroup></select> <span class="vk-mu" style="font-size:13px">Đạo:</span> <select class="vk-sel" id="vk-dao"><option value="auto">Tự động (theo nhân vật)</option><option value="chinh">Chỉ chính đạo (loại đồ tà)</option><option value="all">Cho phép cả tà đạo</option></select></div><div style="margin:6px 0"><span class="vk-mu" style="font-size:13px">Tỉ lệ pháp khí : công pháp:</span> <select class="vk-sel" id="vk-ratio"><option value="free">Tự do (tool tự chọn)</option><option value="55">5 : 5 (cân bằng số món)</option></select>
 </div>
       <button class="vk-btn" id="vk-go">Bắt đầu xếp</button>
       ${progressHtml('vk-pr')}<div id="vk-out"></div></div>
@@ -1247,7 +1254,7 @@ const TOOL_VER = 'v2026.11.23';
       } catch (e) { console.error(e); body.querySelector('#vk-out').innerHTML = errBox(e); }
       ev.target.disabled = false;
     };
-    ['dao'].forEach((k) => { const el = body.querySelector('#vk-' + k); if (!el) return; el.value = S[k] || 'auto'; el.onchange = () => { S[k] = el.value; S.best = null; const o = body.querySelector('#vk-out'); if (o) o.innerHTML = ''; }; });
+    ['dao', 'ratio'].forEach((k) => { const el = body.querySelector('#vk-' + k); if (!el) return; el.value = S[k] || (k === 'ratio' ? 'free' : 'auto'); el.onchange = () => { S[k] = el.value; S.best = null; const o = body.querySelector('#vk-out'); if (o) o.innerHTML = ''; }; });
     ['style'].forEach((k) => { const el = body.querySelector('#vk-' + k); if (!el) return; el.value = S[k] || 'auto'; el.onchange = () => { S[k] = el.value; S.best = null; const o = body.querySelector('#vk-out'); if (o) o.innerHTML = ''; }; });
     body.querySelector('#vk-lt').addEventListener('change', (e) => { S.lt = e.target.checked; S.ec = null; S.best = null; render(); });
     bindBuy(nv); bindCat(nv); bindDoi(nv);
