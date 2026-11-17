@@ -1189,6 +1189,7 @@ const TOOL_VER = 'v2026.11.26';
       <div style="margin:8px 0"><select class="vk-sel" id="vk-it"><option value="auto" selected>Tự động</option><option value="1500">Nhanh</option><option value="3000">Vừa</option><option value="6000">Kỹ (lâu)</option></select></div>
       <div style="margin:6px 0"><span class="vk-mu" style="font-size:13px">Lối tu:</span> <select class="vk-sel" id="vk-style"><option value="auto">Tự động</option><optgroup label="Chính đạo"><option value="s:the">Thể tu</option><option value="s:phat">Phật tu</option><option value="s:kiem">Kiếm tu</option></optgroup><optgroup label="Tà đạo"><option value="s:ma">Ma tu</option><option value="s:doc">Độc cổ</option><option value="s:hop_hoan">Hợp hoan</option><option value="s:quy">Quỷ tu</option><option value="s:thi">Luyện thi</option></optgroup><optgroup label="Nghề"><option value="s:dan">Đan tu</option><option value="s:tran">Trận tu</option><option value="s:phu">Phù tu</option><option value="s:khi">Luyện bảo</option></optgroup><optgroup label="Theo hệ linh căn"><option value="e:kim">Kim tu</option><option value="e:moc">Mộc tu</option><option value="e:thuy">Thủy tu</option><option value="e:hoa">Hỏa tu</option><option value="e:tho">Thổ tu</option><option value="e:bang">Băng tu</option><option value="e:loi">Lôi tu</option><option value="e:phong">Phong tu</option><option value="e:am">Ám tu</option></optgroup><optgroup label="Theo kiểu đánh"><option value="cong">Công kích mạnh</option><option value="hp">Trâu bò (khí huyết + hộ thể)</option><option value="khong">Khống chế</option><option value="hoi">Hồi phục / hộ thuẫn</option><option value="dot">Hiệu ứng (độc, chảy máu, thiêu, hàn)</option></optgroup></select> <span class="vk-mu" style="font-size:13px">Đạo:</span> <select class="vk-sel" id="vk-dao"><option value="auto">Tự động (theo nhân vật)</option><option value="chinh">Chỉ chính đạo (loại đồ tà)</option><option value="all">Cho phép cả tà đạo</option></select></div><div style="margin:6px 0"><span class="vk-mu" style="font-size:13px">Tỉ lệ pháp khí : công pháp:</span> <select class="vk-sel" id="vk-ratio"><option value="free">Tự do (tool tự chọn)</option><option value="55">5 : 5 (cân bằng số món)</option></select>
 </div>
+      <button class="vk-btn sec" id="vk-loi-go" style="margin-bottom:8px">Xem đồ trong túi khớp Lối tu đã chọn</button><div id="vk-loiout"></div>
       <button class="vk-btn" id="vk-go">Bắt đầu xếp</button>
       ${progressHtml('vk-pr')}<div id="vk-out"></div></div>
     <div class="vk-card"><h3>Hai bộ kinh mạch: bế quan và đánh</h3>
@@ -1265,7 +1266,19 @@ const TOOL_VER = 'v2026.11.26';
       ev.target.disabled = false;
     };
     ['dao', 'ratio'].forEach((k) => { const el = body.querySelector('#vk-' + k); if (!el) return; el.value = S[k] || (k === 'ratio' ? 'free' : 'auto'); el.onchange = () => { S[k] = el.value; S.best = null; const o = body.querySelector('#vk-out'); if (o) o.innerHTML = ''; }; });
-    ['style'].forEach((k) => { const el = body.querySelector('#vk-' + k); if (!el) return; el.value = S[k] || 'auto'; el.onchange = () => { S[k] = el.value; S.best = null; const o = body.querySelector('#vk-out'); if (o) o.innerHTML = ''; }; });
+    ['style'].forEach((k) => { const el = body.querySelector('#vk-' + k); if (!el) return; el.value = S[k] || 'auto'; el.onchange = () => { S[k] = el.value; S.best = null; const o = body.querySelector('#vk-out'); if (o) o.innerHTML = ''; const lo = body.querySelector('#vk-loiout'); if (lo) lo.innerHTML = ''; }; });
+    body.querySelector('#vk-loi-go').onclick = () => {
+      const st = S.style || 'auto', out = body.querySelector('#vk-loiout'), cC = C();
+      if (!(st.startsWith('s:') || st.startsWith('e:'))) { out.innerHTML = '<div class="vk-mu" style="font-size:13px;margin-top:6px">Chọn một Lối tu hoặc hệ linh căn ở ô "Lối tu" trước.</div>'; return; }
+      const bag = Object.keys(nv.tuiDo).filter((id) => nv.tuiDo[id] > 0).map((id) => cC.items.get(id)).filter((it) => it && it.hinh && (it.loai === 'cong_phap' || it.loai === 'phap_khi'));
+      const match = bag.filter((it) => loiMatch(st, it)).sort((a, b) => (b.pham_cap || 0) - (a.pham_cap || 0));
+      const rest = bag.filter((it) => !loiMatch(st, it));
+      const equ = new Set((nv.kinhMach.manh || []).filter(Boolean).map((m) => m.item));
+      const row = (it) => `<div style="padding:6px 0;border-bottom:1px dashed #e4d8bd"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(it.ten)}</b><span class="vk-mu">${kindOf(it)} · phẩm ${PHAM[it.pham_cap] || it.pham_cap}${equ.has(it.id) ? ' · <span class="vk-ok">đang mang</span>' : ''}</span></div><div style="font-size:13px">${itemDesc(it) || '—'}</div></div>`;
+      out.innerHTML = `<div class="vk-mu" style="font-size:13px;margin:6px 0">Khớp lối <b>${esc(loiTen(st))}</b> trong túi: <b>${match.length}</b> món.</div>` +
+        (match.length ? match.map(row).join('') : '<div class="vk-mu" style="font-size:13px">Không có món nào trong túi khớp lối này — tool sẽ không thể ưu tiên lối tu khi xếp.</div>') +
+        (rest.length ? `<details style="margin-top:6px"><summary class="vk-mu" style="font-size:13px;cursor:pointer">${rest.length} món công pháp/pháp khí khác trong túi không khớp lối này</summary>${rest.sort((a, b) => (b.pham_cap || 0) - (a.pham_cap || 0)).map(row).join('')}</details>` : '');
+    };
     body.querySelector('#vk-lt').addEventListener('change', (e) => { S.lt = e.target.checked; S.ec = null; S.best = null; render(); });
     bindBuy(nv); bindCat(nv); bindDoi(nv);
     try { renderEvent(nv); } catch (e) { console.error(e); body.querySelector('#vk-ev').innerHTML = errBox(e); }
