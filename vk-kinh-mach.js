@@ -1376,8 +1376,6 @@ const TOOL_VER = 'v2026.11.26';
     };
   }
   async function optimizeMode(nv, mode, iters, prog, f0, f1, label) {
-    // Bộ tu luyện không theo lối tu / mức linh lực đánh nhau
-    if (mode === 'tu' && S.style && S.style !== 'auto') { const o = S.style; S.style = 'auto'; try { return await optimizeMode(nv, mode, iters, prog, f0, f1, label); } finally { S.style = o; } }
     const nv0 = clone(nv); nv0.kinhMach.manh = [];
     const P = (a, b) => (f) => prog(f0 + (f1 - f0) * (a + (b - a) * f), label);
     P(0, 0)(0); const g0 = await greedy(nv0, mode);
