@@ -1,7 +1,7 @@
 // Trợ lý Kinh mạch — Vạn Kiếp Tu Tiên (bản tách riêng chỉ có phần kinh mạch).
 // Tách từ vk-tro-ly.js v2.2.0. Chủ yếu tính toán; chỉ tự xếp kinh mạch khi bạn bấm nút. Không gửi dữ liệu của bạn ra ngoài (chỉ tải nhật ký cập nhật công khai của game).
 // Chạy trong trang game: tải lại code game thành bản sao để dùng hàm tính của chính game.
-const TOOL_VER = 'v2026.11.25';
+const TOOL_VER = 'v2026.11.26';
 
 (() => {
   if (window.__vkKM) { window.__vkKM.show(); return; }
@@ -265,16 +265,18 @@ const TOOL_VER = 'v2026.11.25';
       // Điểm nghịch: mỗi điểm −3% tỉ lệ đột phá (tối đa −15%), thêm phản phệ trong trận (trận mẫu đã tính).
       if (!cache.refKH) cache.refKH = Math.max(1, P.khiHuyetToiDa || 1);
       const fillScore = 6 * ((P.khiHuyetToiDa || 0) / cache.refKH - 1) + 10 * Math.min(0.6, P.hoThe || 0);
+      // Điểm nghịch coi như luật cứng: trừ rất mạnh để tool chỉ chấp nhận có nghịch khi thật sự không còn cách nào khác tốt hơn.
+      const ngPen = 2e4 * ng;
       let rest, fc = 1;
-      if (mode === 'tu') { rest = 400 * toc + 300 * dp + thong - 40 * ng + llScore + fillScore; fc = 0.3; }
+      if (mode === 'tu') { rest = 400 * toc + 300 * dp + thong - 40 * ng + llScore + fillScore - ngPen; fc = 0.3; }
       else if (mode === 'danh') {
         // Bộ đánh: thưởng thêm cho chiêu công mạnh nhất (dồn huyệt, màu ô, sinh khắc, kinh lộ vào một món chủ lực) so với mức gặp đầu tiên, tối đa gấp 3.
         const top = Math.max(0, ...(P.chieu || []).filter((x) => x.dang === 'cong').map((x) => x.uy || 0));
         if (!(cache.refTop > 0) && top > 0) cache.refTop = top;
         const tb = cache.refTop > 0 ? 90 * Math.min(3, top / cache.refTop) : 0;
-        rest = 0.2 * thong - 3 * ng + llScore + tb + fillScore;
+        rest = 0.2 * thong - 3 * ng + llScore + tb + fillScore - ngPen;
       }
-      else rest = 30 * toc + 20 * dp + 0.2 * thong - 10 * ng + llScore + fillScore;
+      else rest = 30 * toc + 20 * dp + 0.2 * thong - 10 * ng + llScore + fillScore - ngPen;
       rest += sb;
       // Đánh trận mẫu; mỗi trận tối đa 175 điểm nên có thể dừng sớm khi tổng tối đa còn lại cũng không thể bằng cách tốt nhất đã thấy
       let fightScore = 0, wins = 0, pruned = false, k = 0;
@@ -340,7 +342,7 @@ const TOOL_VER = 'v2026.11.25';
       if (!refKH) refKH = Math.max(1, P.khiHuyetToiDa || 1);
       const khBonus = 15 * ((P.khiHuyetToiDa || 0) / refKH - 1);
       const hoBonus = 25 * Math.min(0.6, P.hoThe || 0);
-      return w[0] * R.linhLuc + w[1] * toc + w[2] * dp + w[3] * uy + khBonus + hoBonus - 6 * (R.diemNghich || 0) - (thongAll ? 0 : 1000);
+      return w[0] * R.linhLuc + w[1] * toc + w[2] * dp + w[3] * uy + khBonus + hoBonus - 2e4 * (R.diemNghich || 0) - (thongAll ? 0 : 1000);
     };
     let cur = [], curS = quick(cur);
     for (let round = 0; round < 40; round++) {
@@ -1496,7 +1498,7 @@ const TOOL_VER = 'v2026.11.25';
     if (!out) return;
     const dScore = best.score - cur.score, cmp = best.same ? '' : `<div class="vk-card" style="margin:6px 0"><b>So với cách đang xếp:</b> điểm ${Math.round(cur.score)} → <b>${Math.round(best.score)}</b> (${dScore >= 1 ? '<span class="vk-ok">+' + Math.round(dScore) + '</span>' : '<span class="vk-mu">gần như ngang nhau</span>'}) · thắng trận mẫu ${cur.wins}/${cur.n} → <b>${best.wins}/${best.n}</b>${dScore < 1 ? '. Chênh lệch nhỏ nên không cần tốn công xếp lại.' : ''}<div class="vk-mu" style="font-size:12px;margin-top:3px">Điểm là thước đo của tool (đánh 9 loại quái mẫu + tốc độ tu luyện + ổn định); chỉ dùng để so sánh các cách xếp với nhau.</div></div>`;
     out.innerHTML = cmp + (best.same ? '<div class="vk-ok" style="margin:6px 0">Cách đang xếp đã tốt nhất tool tìm được. Giữ nguyên như ảnh dưới (không cần xếp lại):</div>' + drawGrid(nv, best.manh) : '<div class="vk-ok" style="margin:6px 0">Xếp lại trong game theo ảnh dưới, hoặc bấm nút để tool tự xếp:</div>' + applyBtn('vk-ap', 'Tự xếp vào game') + drawGrid(nv, best.manh) + stepList(nv, best.manh, cur.manh)) + statRows(cur, best) +
-      ((best.R && best.R.diemNghich) ? `<div class="vk-mu" style="font-size:12px;margin-top:6px">Cách này còn ${best.R.diemNghich} điểm nghịch (−${Math.min(15, 3 * best.R.diemNghich)}% tỉ lệ đột phá). Lúc chuẩn bị đột phá, chọn chế độ "Ưu tiên tu luyện / đột phá" để tool ưu tiên xóa điểm nghịch.</div>` : '') +
+      ((best.R && best.R.diemNghich) ? `<div class="vk-bad" style="font-size:12px;margin-top:6px">Cách này còn ${best.R.diemNghich} điểm nghịch (−${Math.min(15, 3 * best.R.diemNghich)}% tỉ lệ đột phá). Tool đã cố tránh hẳn điểm nghịch; còn sót nghĩa là với đồ hiện có trong túi, không cách xếp nào dùng được đủ ô mà tránh được 0 điểm nghịch — thường do thiếu đồ phù hợp màu/hệ để lấp quanh món buộc phải khắc. Thử đổi "Tỉ lệ pháp khí : công pháp" về Tự do, hoặc tìm thêm đồ cùng hệ.</div>` : '') +
       '<div class="vk-mu" style="font-size:12px;margin-top:6px">Trận mẫu: 9 loại quái cùng cảnh giới với bạn, ở tiểu cảnh giới quanh mức của bạn (thấp hơn 1, bằng, cao hơn 1).</div>' + pieceTable(best.R) + sellAdvice(nv, best);
     out.insertAdjacentHTML('beforeend', loiInfo(nv, best) + llInfo(best.P));
     try { const a = chieuList(cur.P), b = chieuList(best.P); if (b) out.insertAdjacentHTML('beforeend', `<div class="vk-card" style="margin:6px 0"><b>Uy lực từng chiêu</b> <span class="vk-mu" style="font-size:12px">(chiêu mạnh nhất trước)</span><table class="vk-t"><tr><td>Đang xếp</td><td>${a || '—'}</td></tr><tr><td><b>Cách mới</b></td><td><b>${b}</b></td></tr></table></div>`); } catch (e) { /* bỏ qua */ }
