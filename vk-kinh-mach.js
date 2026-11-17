@@ -1,7 +1,7 @@
 // Trợ lý Kinh mạch — Vạn Kiếp Tu Tiên (bản tách riêng chỉ có phần kinh mạch).
 // Tách từ vk-tro-ly.js v2.2.0. Chủ yếu tính toán; chỉ tự xếp kinh mạch khi bạn bấm nút. Không gửi dữ liệu của bạn ra ngoài (chỉ tải nhật ký cập nhật công khai của game).
 // Chạy trong trang game: tải lại code game thành bản sao để dùng hàm tính của chính game.
-const TOOL_VER = 'v2026.11.24';
+const TOOL_VER = 'v2026.11.25';
 
 (() => {
   if (window.__vkKM) { window.__vkKM.show(); return; }
@@ -263,16 +263,18 @@ const TOOL_VER = 'v2026.11.24';
         sb = cache.ref > 0 ? 120 * Math.min(3, m / cache.ref) : 0;
       }
       // Điểm nghịch: mỗi điểm −3% tỉ lệ đột phá (tối đa −15%), thêm phản phệ trong trận (trận mẫu đã tính).
+      if (!cache.refKH) cache.refKH = Math.max(1, P.khiHuyetToiDa || 1);
+      const fillScore = 6 * ((P.khiHuyetToiDa || 0) / cache.refKH - 1) + 10 * Math.min(0.6, P.hoThe || 0);
       let rest, fc = 1;
-      if (mode === 'tu') { rest = 400 * toc + 300 * dp + thong - 40 * ng + llScore; fc = 0.3; }
+      if (mode === 'tu') { rest = 400 * toc + 300 * dp + thong - 40 * ng + llScore + fillScore; fc = 0.3; }
       else if (mode === 'danh') {
         // Bộ đánh: thưởng thêm cho chiêu công mạnh nhất (dồn huyệt, màu ô, sinh khắc, kinh lộ vào một món chủ lực) so với mức gặp đầu tiên, tối đa gấp 3.
         const top = Math.max(0, ...(P.chieu || []).filter((x) => x.dang === 'cong').map((x) => x.uy || 0));
         if (!(cache.refTop > 0) && top > 0) cache.refTop = top;
         const tb = cache.refTop > 0 ? 90 * Math.min(3, top / cache.refTop) : 0;
-        rest = 0.2 * thong - 3 * ng + llScore + tb;
+        rest = 0.2 * thong - 3 * ng + llScore + tb + fillScore;
       }
-      else rest = 30 * toc + 20 * dp + 0.2 * thong - 10 * ng + llScore;
+      else rest = 30 * toc + 20 * dp + 0.2 * thong - 10 * ng + llScore + fillScore;
       rest += sb;
       // Đánh trận mẫu; mỗi trận tối đa 175 điểm nên có thể dừng sớm khi tổng tối đa còn lại cũng không thể bằng cách tốt nhất đã thấy
       let fightScore = 0, wins = 0, pruned = false, k = 0;
@@ -325,14 +327,20 @@ const TOOL_VER = 'v2026.11.24';
   // Xếp tham lam nhanh (giống nút tự đặt của game): lần lượt đặt món + vị trí làm tăng điểm nhiều nhất.
   async function greedy(nv0, mode) {
     const K = S.core, c = C(), { cand } = buildCandidates(nv0);
+    let refKH = 0;
     const quick = (manh) => {
       const nv = { ...nv0, kinhMach: { ...nv0.kinhMach, manh: manh.map((p) => ({ ...p.m })) } };
-      const R = K.Rt(nv, c);
+      const R = K.Rt(nv, c), P = K.Vr(nv, c);
       const uy = (R.chieu || []).reduce((a, x) => a + (x.uyLuc || x.uy || 0) / 10, 0);
       const toc = R.biDong.toc_do || 0, dp = Math.min(0.12, R.biDong.dot_pha || 0);
       const w = mode === 'tu' ? [0.5, 60, 40, 0.3] : mode === 'danh' ? [1.5, 3, 2, 1.2] : [1, 12, 8, 1];
       const thongAll = R.manh.every((m) => !m || m.thong);
-      return w[0] * R.linhLuc + w[1] * toc + w[2] * dp + w[3] * uy - 6 * (R.diemNghich || 0) - (thongAll ? 0 : 1000);
+      // Nhiều món chỉ góp khí huyết / hộ thể (không có chiêu hay linh lực), trước đây không được tính nên
+      // tham lam coi như vô dụng và bỏ qua, để trống ô dù túi còn đồ. Tính thêm hai mục này để không bỏ sót.
+      if (!refKH) refKH = Math.max(1, P.khiHuyetToiDa || 1);
+      const khBonus = 15 * ((P.khiHuyetToiDa || 0) / refKH - 1);
+      const hoBonus = 25 * Math.min(0.6, P.hoThe || 0);
+      return w[0] * R.linhLuc + w[1] * toc + w[2] * dp + w[3] * uy + khBonus + hoBonus - 6 * (R.diemNghich || 0) - (thongAll ? 0 : 1000);
     };
     let cur = [], curS = quick(cur);
     for (let round = 0; round < 40; round++) {
