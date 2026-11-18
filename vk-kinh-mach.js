@@ -335,7 +335,8 @@ const TOOL_VER = 'v2026.11.26';
       const R = K.Rt(nv, c), P = K.Vr(nv, c);
       const uy = (R.chieu || []).reduce((a, x) => a + (x.uyLuc || x.uy || 0) / 10, 0);
       const toc = R.biDong.toc_do || 0, dp = Math.min(0.12, R.biDong.dot_pha || 0);
-      const w = mode === 'tu' ? [0.5, 60, 40, 0.3] : mode === 'danh' ? [1.5, 3, 2, 1.2] : [1, 12, 8, 1];
+      // Bộ đánh: xếp tham lam nhắm thẳng linh lực + uy lực chiêu (khớp công thức tinh chỉnh thật sau này), gần như bỏ qua tốc độ tu luyện / đột phá.
+      const w = mode === 'tu' ? [0.5, 60, 40, 0.3] : mode === 'danh' ? [2, 0.2, 0.1, 6] : [1, 12, 8, 1];
       const thongAll = R.manh.every((m) => !m || m.thong);
       // Nhiều món chỉ góp khí huyết / hộ thể (không có chiêu hay linh lực), trước đây không được tính nên
       // tham lam coi như vô dụng và bỏ qua, để trống ô dù túi còn đồ. Tính thêm hai mục này để không bỏ sót.
