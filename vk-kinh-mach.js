@@ -560,11 +560,38 @@ const TOOL_VER = 'v2026.11.26';
   root.innerHTML = `<div id="vk-hd"><b>Trợ lý Kinh mạch</b><span style="font-size:11px;opacity:.7;margin-left:6px">${TOOL_VER}</span><button id="vk-sd" title="Đổi bên trái/phải">⇄</button><button id="vk-wd" title="Rộng/hẹp">↔</button><button id="vk-rf">Làm mới</button><button id="vk-mn" title="Thu nhỏ (giữ kết quả, game vẫn chơi được)">–</button><button id="vk-x">Đóng</button></div><div id="vk-body"></div>`;
   document.body.appendChild(root);
   const fab = document.createElement('button'); fab.id = 'vk-fab'; fab.textContent = '助'; document.body.appendChild(fab);
+  // Cho kéo thả biểu tượng tròn đi chỗ khác nếu nó đang vướng, nhớ vị trí cho lần sau.
+  (() => {
+    let pos = null; try { pos = JSON.parse(localStorage.getItem('vkFabPos') || 'null'); } catch (e) {}
+    const place = (x, y) => {
+      const w = fab.offsetWidth || 52, h = fab.offsetHeight || 52;
+      x = Math.max(4, Math.min(window.innerWidth - w - 4, x)); y = Math.max(4, Math.min(window.innerHeight - h - 4, y));
+      fab.style.left = x + 'px'; fab.style.top = y + 'px'; fab.style.right = 'auto'; fab.style.bottom = 'auto';
+    };
+    if (pos && typeof pos.x === 'number') place(pos.x, pos.y);
+    let sx = 0, sy = 0, ox = 0, oy = 0, dragging = false, moved = false;
+    fab.addEventListener('pointerdown', (e) => {
+      dragging = true; moved = false; fab.setPointerCapture(e.pointerId);
+      const r = fab.getBoundingClientRect(); sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top;
+    });
+    fab.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - sx, dy = e.clientY - sy;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) moved = true;
+      if (moved) place(ox + dx, oy + dy);
+    });
+    const end = (e) => {
+      if (!dragging) return; dragging = false;
+      if (moved) { const r = fab.getBoundingClientRect(); try { localStorage.setItem('vkFabPos', JSON.stringify({ x: r.left, y: r.top })); } catch (er) {} }
+    };
+    fab.addEventListener('pointerup', end); fab.addEventListener('pointercancel', end);
+    fab.addEventListener('click', (e) => { if (moved) { e.preventDefault(); e.stopPropagation(); moved = false; return; } S.show(); });
+  })();
   const body = root.querySelector('#vk-body');
   S.show = () => { root.style.display = 'flex'; fab.style.display = 'none'; render(); };
   S.hide = () => { S.abort = true; root.style.display = 'none'; fab.style.display = 'block'; };
   S.min = () => { root.style.display = 'none'; fab.style.display = 'block'; };
-  root.querySelector('#vk-x').onclick = S.hide; root.querySelector('#vk-mn').onclick = S.min; fab.onclick = S.show;
+  root.querySelector('#vk-x').onclick = S.hide; root.querySelector('#vk-mn').onclick = S.min;
   root.querySelector('#vk-sd').onclick = () => root.classList.toggle('vk-left');
   root.querySelector('#vk-wd').onclick = () => root.classList.toggle('vk-wide');
   root.querySelector('#vk-rf').onclick = () => { S.best = null; S.ec = null; S.cm = null; S.be = null; render(); };
