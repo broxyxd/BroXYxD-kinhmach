@@ -270,11 +270,18 @@ const TOOL_VER = 'v2026.11.26';
       let rest, fc = 1;
       if (mode === 'tu') { rest = 400 * toc + 300 * dp + thong - 40 * ng + llScore + fillScore - ngPen; fc = 0.3; }
       else if (mode === 'danh') {
-        // Bộ đánh: thưởng thêm cho chiêu công mạnh nhất (dồn huyệt, màu ô, sinh khắc, kinh lộ vào một món chủ lực) so với mức gặp đầu tiên, tối đa gấp 3.
-        const top = Math.max(0, ...(P.chieu || []).filter((x) => x.dang === 'cong').map((x) => x.uy || 0));
-        if (!(cache.refTop > 0) && top > 0) cache.refTop = top;
-        const tb = cache.refTop > 0 ? 90 * Math.min(3, top / cache.refTop) : 0;
-        rest = 0.2 * thong - 3 * ng + llScore + tb + fillScore - ngPen;
+        // Bộ đánh, thứ tự ưu tiên: khí huyết → linh lực → sát thương (tổng 3 chiêu công mạnh nhất) → hồi huyết/tạo thuẫn.
+        // Cộng điểm trọng số giảm dần mạnh giữa các tầng (không phải luật cứng), mỗi tầng so với mức gặp đầu tiên, tối đa gấp 3,
+        // để vẫn có thể đánh đổi khi một cách xếp thật sự vượt trội ở tầng dưới.
+        if (!(cache.refKH2 > 0) && P.khiHuyetToiDa > 0) cache.refKH2 = P.khiHuyetToiDa;
+        const khScore = cache.refKH2 > 0 ? 260 * Math.min(3, (P.khiHuyetToiDa || 0) / cache.refKH2) : 0;
+        const atkTop3 = (P.chieu || []).filter((x) => x.dang === 'cong').map((x) => x.uy || 0).sort((a, b) => b - a).slice(0, 3).reduce((a, x) => a + x, 0);
+        if (!(cache.refTop3 > 0) && atkTop3 > 0) cache.refTop3 = atkTop3;
+        const tb = cache.refTop3 > 0 ? 130 * Math.min(3, atkTop3 / cache.refTop3) : 0;
+        const healChieu = (P.chieu || []).filter((x) => x.dang === 'hoi_phuc' || x.dang === 'thu');
+        const healUy = healChieu.reduce((a, x) => a + (x.uy || 0), 0);
+        const healBonus = healChieu.length ? 40 + 20 * Math.min(2, healUy) : 0;
+        rest = 0.2 * thong - 3 * ng + khScore + 2 * llScore + tb + healBonus + fillScore - ngPen;
       }
       else rest = 30 * toc + 20 * dp + 0.2 * thong - 10 * ng + llScore + fillScore - ngPen;
       rest += sb;
@@ -335,13 +342,14 @@ const TOOL_VER = 'v2026.11.26';
       const R = K.Rt(nv, c), P = K.Vr(nv, c);
       const uy = (R.chieu || []).reduce((a, x) => a + (x.uyLuc || x.uy || 0) / 10, 0);
       const toc = R.biDong.toc_do || 0, dp = Math.min(0.12, R.biDong.dot_pha || 0);
-      // Bộ đánh: xếp tham lam nhắm thẳng linh lực + uy lực chiêu (khớp công thức tinh chỉnh thật sau này), gần như bỏ qua tốc độ tu luyện / đột phá.
-      const w = mode === 'tu' ? [0.5, 60, 40, 0.3] : mode === 'danh' ? [2, 0.2, 0.1, 6] : [1, 12, 8, 1];
+      // Bộ đánh: xếp tham lam nhắm khí huyết → linh lực → uy lực chiêu (khớp thứ tự ưu tiên thật sau này), gần như bỏ qua tốc độ tu luyện / đột phá.
+      const w = mode === 'tu' ? [0.5, 60, 40, 0.3] : mode === 'danh' ? [3, 0.2, 0.1, 4] : [1, 12, 8, 1];
       const thongAll = R.manh.every((m) => !m || m.thong);
       // Nhiều món chỉ góp khí huyết / hộ thể (không có chiêu hay linh lực), trước đây không được tính nên
       // tham lam coi như vô dụng và bỏ qua, để trống ô dù túi còn đồ. Tính thêm hai mục này để không bỏ sót.
       if (!refKH) refKH = Math.max(1, P.khiHuyetToiDa || 1);
-      const khBonus = 15 * ((P.khiHuyetToiDa || 0) / refKH - 1);
+      const khW = mode === 'danh' ? 40 : 15;
+      const khBonus = khW * ((P.khiHuyetToiDa || 0) / refKH - 1);
       const hoBonus = 25 * Math.min(0.6, P.hoThe || 0);
       return w[0] * R.linhLuc + w[1] * toc + w[2] * dp + w[3] * uy + khBonus + hoBonus - 2e4 * (R.diemNghich || 0) - (thongAll ? 0 : 1000);
     };
