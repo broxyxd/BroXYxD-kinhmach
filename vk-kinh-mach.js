@@ -265,8 +265,10 @@ const TOOL_VER = 'v2026.11.26';
       // Điểm nghịch: mỗi điểm −3% tỉ lệ đột phá (tối đa −15%), thêm phản phệ trong trận (trận mẫu đã tính).
       if (!cache.refKH) cache.refKH = Math.max(1, P.khiHuyetToiDa || 1);
       const fillScore = 6 * ((P.khiHuyetToiDa || 0) / cache.refKH - 1) + 10 * Math.min(0.6, P.hoThe || 0);
-      // Điểm nghịch coi như luật cứng: trừ rất mạnh để tool chỉ chấp nhận có nghịch khi thật sự không còn cách nào khác tốt hơn.
-      const ngPen = 2e4 * ng;
+      // Điểm nghịch coi như luật cứng ở các bộ tu luyện/cân bằng/wiki. Riêng bộ "Đánh": nghịch chỉ gây −3%/điểm đột phá
+      // (không nằm trong ưu tiên của bộ này) và chút phản phệ (trận mẫu thật đã tự tính), nên không thể nặng ngang các bộ kia —
+      // nếu không sẽ sẵn sàng vứt cả nghìn điểm sát thương chỉ để tránh đúng 1 điểm nghịch (đã xảy ra thật, theo phản hồi người dùng).
+      const ngPen = mode === 'danh' ? 25 * ng : 2e4 * ng;
       let rest, fc = 1;
       if (mode === 'tu') { rest = 400 * toc + 300 * dp + thong - 40 * ng + llScore + fillScore - ngPen; fc = 0.3; }
       else if (mode === 'danh') {
@@ -351,7 +353,8 @@ const TOOL_VER = 'v2026.11.26';
       // Bộ đánh: khí huyết chỉ cộng điểm tới khi đủ (~25% hơn mức gặp đầu), dư thêm không cộng nữa, để không đè mất uy lực chiêu.
       const khBonus = mode === 'danh' ? 35 * Math.min(1.25, (P.khiHuyetToiDa || 0) / refKH) / 1.25 : 15 * ((P.khiHuyetToiDa || 0) / refKH - 1);
       const hoBonus = 25 * Math.min(0.6, P.hoThe || 0);
-      return w[0] * R.linhLuc + w[1] * toc + w[2] * dp + w[3] * uy + khBonus + hoBonus - 2e4 * (R.diemNghich || 0) - (thongAll ? 0 : 1000);
+      const ngW = mode === 'danh' ? 25 : 2e4;
+      return w[0] * R.linhLuc + w[1] * toc + w[2] * dp + w[3] * uy + khBonus + hoBonus - ngW * (R.diemNghich || 0) - (thongAll ? 0 : 1000);
     };
     let cur = [], curS = quick(cur);
     for (let round = 0; round < 40; round++) {
